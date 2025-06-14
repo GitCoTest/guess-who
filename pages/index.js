@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore';
-
+import { initializeApp } from '@firebase/app';
+import { getAuth } from '@firebase/auth';
+import { getFirestore } from '@firebase/firestore';
 // --- Firebase Configuration ---
 // This configuration is automatically provided in the execution environment.
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
