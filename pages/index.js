@@ -1,23 +1,33 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, onAuthStateChanged, signInAnonymously } from 'firebase/auth';
-import { getFirestore, doc, setDoc, updateDoc, onSnapshot, arrayUnion, serverTimestamp } from 'firebase/firestore';
 
-// Firebase Configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyC0fkCgGrLziXCuoImv54prBczTv4i59h8",
-  authDomain: "guess-who-1978e.firebaseapp.com",
-  projectId: "guess-who-1978e",
-  storageBucket: "guess-who-1978e.firebasestorage.app",
-  messagingSenderId: "1030946591786",
-  appId: "1:1030946591786:web:dd5c91449f1ea72fee5f53",
-  measurementId: "G-L721TEEPPT"
-};
+// Firebase imports with error handling
+let firebaseApp, auth, db;
+let firebaseError = null;
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+try {
+  const { initializeApp } = require('firebase/app');
+  const { getAuth, onAuthStateChanged, signInAnonymously } = require('firebase/auth');
+  const { getFirestore, doc, setDoc, updateDoc, onSnapshot, arrayUnion, serverTimestamp } = require('firebase/firestore');
+
+  // Firebase Configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyC0fkCgGrLziXCuoImv54prBczTv4i59h8",
+    authDomain: "guess-who-1978e.firebaseapp.com",
+    projectId: "guess-who-1978e",
+    storageBucket: "guess-who-1978e.firebasestorage.app",
+    messagingSenderId: "1030946591786",
+    appId: "1:1030946591786:web:dd5c91449f1ea72fee5f53",
+    measurementId: "G-L721TEEPPT"
+  };
+
+  // Initialize Firebase
+  firebaseApp = initializeApp(firebaseConfig);
+  auth = getAuth(firebaseApp);
+  db = getFirestore(firebaseApp);
+} catch (error) {
+  console.error("Firebase initialization error:", error);
+  firebaseError = error.message;
+}
 
 // Character data
 const defaultCharacters = [
@@ -32,7 +42,19 @@ const defaultCharacters = [
     { id: 9, name: 'Ivy', image: 'https://placehold.co/150x150/E9C46A/000000?text=Ivy' },
     { id: 10, name: 'Jack', image: 'https://placehold.co/150x150/F4A261/000000?text=Jack' },
     { id: 11, name: 'Kate', image: 'https://placehold.co/150x150/264653/FFFFFF?text=Kate' },
-    { id: 12, name: 'Leo', image: 'https://placehold.co/150x150/E76F51/000000?text=Leo' }
+    { id: 12, name: 'Leo', image: 'https://placehold.co/150x150/E76F51/000000?text=Leo' },
+    { id: 13, name: 'Maria', image: 'https://placehold.co/150x150/F4A261/000000?text=Maria' },
+    { id: 14, name: 'Noah', image: 'https://placehold.co/150x150/2A9D8F/FFFFFF?text=Noah' },
+    { id: 15, name: 'Olivia', image: 'https://placehold.co/150x150/E9C46A/000000?text=Olivia' },
+    { id: 16, name: 'Paul', image: 'https://placehold.co/150x150/F4A261/000000?text=Paul' },
+    { id: 17, name: 'Quinn', image: 'https://placehold.co/150x150/264653/FFFFFF?text=Quinn' },
+    { id: 18, name: 'Rachel', image: 'https://placehold.co/150x150/E76F51/000000?text=Rachel' },
+    { id: 19, name: 'Sam', image: 'https://placehold.co/150x150/F4A261/000000?text=Sam' },
+    { id: 20, name: 'Tina', image: 'https://placehold.co/150x150/2A9D8F/FFFFFF?text=Tina' },
+    { id: 21, name: 'Uma', image: 'https://placehold.co/150x150/E9C46A/000000?text=Uma' },
+    { id: 22, name: 'Victor', image: 'https://placehold.co/150x150/F4A261/000000?text=Victor' },
+    { id: 23, name: 'Wendy', image: 'https://placehold.co/150x150/264653/FFFFFF?text=Wendy' },
+    { id: 24, name: 'Zane', image: 'https://placehold.co/150x150/E76F51/000000?text=Zane' }
 ];
 
 // Helper functions
@@ -78,6 +100,15 @@ export default function GuessWhoGame() {
 
     const chatEndRef = useRef(null);
 
+    // Check for Firebase errors first
+    useEffect(() => {
+        if (firebaseError) {
+            setError(`Firebase initialization failed: ${firebaseError}`);
+            setLoading(false);
+            return;
+        }
+    }, []);
+
     // Memoized values
     const playerIds = useMemo(() => 
         gameData?.players ? Object.keys(gameData.players) : [], 
@@ -104,19 +135,29 @@ export default function GuessWhoGame() {
         return questions.length > 0 ? questions[questions.length - 1] : null;
     }, [gameData?.questions]);
 
-    // Firebase Auth
+    // Firebase Auth with better error handling
     useEffect(() => {
+        if (firebaseError || !auth) {
+            setLoading(false);
+            return;
+        }
+
+        const { onAuthStateChanged, signInAnonymously } = require('firebase/auth');
+
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             if (currentUser) {
+                console.log("User authenticated:", currentUser.uid);
                 setUser(currentUser);
                 setLoading(false);
             } else {
+                console.log("No user, signing in anonymously...");
                 try {
                     const result = await signInAnonymously(auth);
+                    console.log("Anonymous sign-in successful:", result.user.uid);
                     setUser(result.user);
                 } catch (error) {
                     console.error("Auth error:", error);
-                    setError("Authentication failed: " + error.message);
+                    setError(`Authentication failed: ${error.message}`);
                 } finally {
                     setLoading(false);
                 }
@@ -142,13 +183,16 @@ export default function GuessWhoGame() {
 
     // Listen to game updates
     useEffect(() => {
-        if (!gameId || !user) return;
+        if (!gameId || !user || !db) return;
+
+        const { doc, onSnapshot } = require('firebase/firestore');
 
         const gameRef = doc(db, 'games', gameId);
         const unsubscribe = onSnapshot(gameRef, 
             (docSnap) => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
+                    console.log("Game data updated:", data);
                     setGameData(data);
                     
                     // Update game state based on data
@@ -175,7 +219,7 @@ export default function GuessWhoGame() {
             },
             (error) => {
                 console.error("Game listener error:", error);
-                setError("Failed to connect to game: " + error.message);
+                setError(`Failed to connect to game: ${error.message}`);
             }
         );
 
@@ -189,9 +233,10 @@ export default function GuessWhoGame() {
 
     // Game functions
     const joinGame = async () => {
-        if (!user || !gameData) return;
+        if (!user || !gameData || !db) return;
         
         try {
+            const { doc, updateDoc } = require('firebase/firestore');
             const gameRef = doc(db, 'games', gameId);
             await updateDoc(gameRef, {
                 [`players.${user.uid}`]: {
@@ -200,41 +245,46 @@ export default function GuessWhoGame() {
                     name: `Player ${Object.keys(gameData.players || {}).length + 1}`
                 }
             });
+            console.log("Successfully joined game");
         } catch (error) {
             console.error("Error joining game:", error);
-            setError("Failed to join game: " + error.message);
+            setError(`Failed to join game: ${error.message}`);
         }
     };
 
     const createGame = async () => {
-        if (!user) return;
+        if (!user || !db) return;
 
         const newGameId = generateGameId();
-        const gameRef = doc(db, 'games', newGameId);
-
-        const initialData = {
-            id: newGameId,
-            hostId: user.uid,
-            characters: defaultCharacters,
-            players: {
-                [user.uid]: { 
-                    id: user.uid, 
-                    joinOrder: 1, 
-                    name: 'Player 1' 
-                }
-            },
-            gameState: {
-                status: 'waiting',
-                currentPlayerId: null,
-                winnerId: null,
-            },
-            questions: [],
-            chat: [],
-            createdAt: serverTimestamp(),
-        };
+        console.log("Creating game with ID:", newGameId);
 
         try {
+            const { doc, setDoc, updateDoc, arrayUnion, serverTimestamp } = require('firebase/firestore');
+            const gameRef = doc(db, 'games', newGameId);
+
+            const initialData = {
+                id: newGameId,
+                hostId: user.uid,
+                characters: defaultCharacters,
+                players: {
+                    [user.uid]: { 
+                        id: user.uid, 
+                        joinOrder: 1, 
+                        name: 'Player 1' 
+                    }
+                },
+                gameState: {
+                    status: 'waiting',
+                    currentPlayerId: null,
+                    winnerId: null,
+                },
+                questions: [],
+                chat: [],
+                createdAt: serverTimestamp(),
+            };
+
             await setDoc(gameRef, initialData);
+            console.log("Game created successfully");
             
             // Add initial chat message
             await updateDoc(gameRef, {
@@ -253,12 +303,12 @@ export default function GuessWhoGame() {
             }
         } catch (error) {
             console.error("Error creating game:", error);
-            setError("Failed to create game: " + error.message);
+            setError(`Failed to create game: ${error.message}`);
         }
     };
 
     const startGame = async () => {
-        if (!gameId || !gameData || !user) return;
+        if (!gameId || !gameData || !user || !db) return;
 
         const chars = [...gameData.characters];
         const p1Secret = chars.splice(Math.floor(Math.random() * chars.length), 1)[0];
@@ -269,6 +319,7 @@ export default function GuessWhoGame() {
         const player2Id = playerKeys.find(id => gameData.players[id].joinOrder === 2);
 
         try {
+            const { doc, updateDoc, arrayUnion } = require('firebase/firestore');
             const gameRef = doc(db, 'games', gameId);
             await updateDoc(gameRef, {
                 [`players.${player1Id}.secretCharacter`]: p1Secret,
@@ -281,17 +332,19 @@ export default function GuessWhoGame() {
                     timestamp: new Date()
                 })
             });
+            console.log("Game started successfully");
         } catch (error) {
             console.error("Error starting game:", error);
-            setError("Failed to start game: " + error.message);
+            setError(`Failed to start game: ${error.message}`);
         }
     };
 
     const sendMessage = async (e) => {
         e.preventDefault();
-        if (!gameId || !chatInput.trim() || !user) return;
+        if (!gameId || !chatInput.trim() || !user || !db) return;
 
         try {
+            const { doc, updateDoc, arrayUnion } = require('firebase/firestore');
             const gameRef = doc(db, 'games', gameId);
             await updateDoc(gameRef, {
                 chat: arrayUnion({
@@ -308,9 +361,10 @@ export default function GuessWhoGame() {
 
     const askQuestion = async (e) => {
         e.preventDefault();
-        if (!gameId || !questionInput.trim() || !user || !me) return;
+        if (!gameId || !questionInput.trim() || !user || !me || !db) return;
 
         try {
+            const { doc, updateDoc, arrayUnion } = require('firebase/firestore');
             const gameRef = doc(db, 'games', gameId);
             await updateDoc(gameRef, {
                 questions: arrayUnion({
@@ -332,12 +386,13 @@ export default function GuessWhoGame() {
     };
 
     const answerQuestion = async (answer) => {
-        if (!gameId || !lastQuestion || !user || !me || !opponent) return;
+        if (!gameId || !lastQuestion || !user || !me || !opponent || !db) return;
 
         const updatedQuestions = [...(gameData.questions || [])];
         updatedQuestions[updatedQuestions.length - 1].answer = answer;
 
         try {
+            const { doc, updateDoc, arrayUnion } = require('firebase/firestore');
             const gameRef = doc(db, 'games', gameId);
             await updateDoc(gameRef, {
                 questions: updatedQuestions,
@@ -354,12 +409,13 @@ export default function GuessWhoGame() {
     };
 
     const makeGuess = async (characterId) => {
-        if (!gameId || !user || !me || !opponent?.secretCharacter) return;
+        if (!gameId || !user || !me || !opponent?.secretCharacter || !db) return;
 
         const isCorrect = characterId === opponent.secretCharacter.id;
         const character = gameData.characters.find(c => c.id === characterId);
 
         try {
+            const { doc, updateDoc, arrayUnion } = require('firebase/firestore');
             const gameRef = doc(db, 'games', gameId);
             if (isCorrect) {
                 await updateDoc(gameRef, {
@@ -429,13 +485,19 @@ export default function GuessWhoGame() {
         );
     }
 
-    // Error state
+    // Error state with more details
     if (error) {
         return (
             <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white">
                 <div className="text-center bg-gray-800 p-8 rounded-lg max-w-md">
                     <h1 className="text-2xl font-bold mb-4 text-red-400">Error</h1>
-                    <p className="mb-4 text-gray-300">{error}</p>
+                    <p className="mb-4 text-gray-300 text-sm">{error}</p>
+                    <div className="mb-4 text-xs text-gray-500">
+                        <p>Debug info:</p>
+                        <p>Firebase Error: {firebaseError ? 'Yes' : 'No'}</p>
+                        <p>Auth: {auth ? 'Initialized' : 'Not initialized'}</p>
+                        <p>DB: {db ? 'Initialized' : 'Not initialized'}</p>
+                    </div>
                     <button 
                         onClick={() => {
                             setError(null);
@@ -465,6 +527,9 @@ export default function GuessWhoGame() {
                     >
                         Create New Game
                     </button>
+                </div>
+                <div className="mt-8 text-center text-gray-500">
+                    <p>User ID: <span className="font-mono bg-gray-800 p-1 rounded text-xs">{user?.uid?.substring(0, 8)}...</span></p>
                 </div>
             </div>
         );
