@@ -556,6 +556,18 @@ export default function GuessWhoGame() {
                         Copy Link
                     </button>
                     
+                    {playerIds.length < 2 && (
+                    <div className="mb-6 p-4 bg-yellow-900/30 rounded border border-yellow-600">
+                        <p className="text-yellow-400 mb-2 text-sm">Not joining automatically?</p>
+                        <button 
+                            onClick={joinGame}
+                            className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+                        >
+                            Join Game Manually
+                        </button>
+                    </div>
+                    )}
+
                     {playerIds.length === 2 && gameData?.hostId === user?.uid && (
                         <div className="pt-6 border-t border-gray-600">
                             <p className="text-green-400 mb-4">Both players joined!</p>
