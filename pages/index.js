@@ -1,16 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useRouter } from 'next/router';
 
-// Firebase imports with error handling
-let firebaseApp, auth, db;
-let firebaseError = null;
+// Import Firebase at top level - FIXED
+import { initializeApp } from 'firebase/app';
+import { getAuth, onAuthStateChanged, signInAnonymously } from 'firebase/auth';
+import { getFirestore, doc, setDoc, updateDoc, onSnapshot, arrayUnion, serverTimestamp } from 'firebase/firestore';
 
-try {
-  const { initializeApp } = require('firebase/app');
-  const { getAuth, onAuthStateChanged, signInAnonymously } = require('firebase/auth');
-  const { getFirestore, doc, setDoc, updateDoc, onSnapshot, arrayUnion, serverTimestamp } = require('firebase/firestore');
-
-  // Firebase Configuration
-  const firebaseConfig = {
+// Firebase Configuration
+const firebaseConfig = {
     apiKey: "AIzaSyC0fkCgGrLziXCuoImv54prBczTv4i59h8",
     authDomain: "guess-who-1978e.firebaseapp.com",
     projectId: "guess-who-1978e",
@@ -18,16 +15,12 @@ try {
     messagingSenderId: "1030946591786",
     appId: "1:1030946591786:web:dd5c91449f1ea72fee5f53",
     measurementId: "G-L721TEEPPT"
-  };
+};
 
-  // Initialize Firebase
-  firebaseApp = initializeApp(firebaseConfig);
-  auth = getAuth(firebaseApp);
-  db = getFirestore(firebaseApp);
-} catch (error) {
-  console.error("Firebase initialization error:", error);
-  firebaseError = error.message;
-}
+// Initialize Firebase - FIXED
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
 
 // Character data
 const defaultCharacters = [
@@ -86,6 +79,8 @@ const GameModal = ({ title, children, onClose }) => (
 );
 
 export default function GuessWhoGame() {
+    const router = useRouter();
+    
     // State
     const [user, setUser] = useState(null);
     const [gameState, setGameState] = useState('menu');
@@ -99,15 +94,6 @@ export default function GuessWhoGame() {
     const [showGuessModal, setShowGuessModal] = useState(false);
 
     const chatEndRef = useRef(null);
-
-    // Check for Firebase errors first
-    useEffect(() => {
-        if (firebaseError) {
-            setError(`Firebase initialization failed: ${firebaseError}`);
-            setLoading(false);
-            return;
-        }
-    }, []);
 
     // Memoized values
     const playerIds = useMemo(() => 
@@ -135,15 +121,8 @@ export default function GuessWhoGame() {
         return questions.length > 0 ? questions[questions.length - 1] : null;
     }, [gameData?.questions]);
 
-    // Firebase Auth with better error handling
+    // Firebase Auth - FIXED
     useEffect(() => {
-        if (firebaseError || !auth) {
-            setLoading(false);
-            return;
-        }
-
-        const { onAuthStateChanged, signInAnonymously } = require('firebase/auth');
-
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             if (currentUser) {
                 console.log("User authenticated:", currentUser.uid);
@@ -167,29 +146,30 @@ export default function GuessWhoGame() {
         return () => unsubscribe();
     }, []);
 
-    // Check URL for game ID
+    // Check URL for game ID - FIXED timing
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const path = window.location.pathname;
             if (path.startsWith('/play/')) {
                 const id = path.split('/play/')[1];
-                if (id) {
+                if (id && id !== gameId) {
+                    console.log('Setting game ID from URL:', id);
                     setGameId(id);
                     setGameState('waiting');
                 }
             }
         }
-    }, []);
+    }, [gameId]);
 
-    // Listen to game updates
+    // Listen to game updates - FIXED auto-join
     useEffect(() => {
         if (!gameId || !user || !db) return;
 
-        const { doc, onSnapshot } = require('firebase/firestore');
-
+        console.log('Setting up game listener for:', gameId, 'user:', user.uid);
         const gameRef = doc(db, 'games', gameId);
+        
         const unsubscribe = onSnapshot(gameRef, 
-            (docSnap) => {
+            async (docSnap) => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
                     console.log("Game data updated:", data);
@@ -204,11 +184,25 @@ export default function GuessWhoGame() {
                         setGameState('finished');
                     }
 
-                    // Auto-join if waiting and less than 2 players
-                    if (data.gameState?.status === 'waiting' && 
-                        !data.players?.[user.uid] && 
-                        Object.keys(data.players || {}).length < 2) {
-                        joinGame();
+                    // FIXED: Better auto-join logic
+                    const currentPlayers = Object.keys(data.players || {});
+                    const isPlayerInGame = currentPlayers.includes(user.uid);
+                    const hasSpace = currentPlayers.length < 2;
+                    
+                    console.log('Auto-join check:', {
+                        isPlayerInGame,
+                        hasSpace,
+                        status: data.gameState?.status,
+                        currentPlayers: currentPlayers.length
+                    });
+
+                    if (data.gameState?.status === 'waiting' && !isPlayerInGame && hasSpace) {
+                        console.log('Auto-joining game...');
+                        try {
+                            await joinGame();
+                        } catch (error) {
+                            console.error('Auto-join failed:', error);
+                        }
                     }
                 } else {
                     console.log("Game not found");
@@ -231,20 +225,25 @@ export default function GuessWhoGame() {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [gameData?.chat]);
 
-    // Game functions
+    // Game functions - FIXED joinGame
     const joinGame = async () => {
-        if (!user || !gameData || !db) return;
+        if (!user || !gameId || !db) {
+            console.error('Missing requirements for join:', { user: !!user, gameId, db: !!db });
+            return;
+        }
         
         try {
-            const { doc, updateDoc } = require('firebase/firestore');
+            console.log('Attempting to join game:', gameId, 'as user:', user.uid);
             const gameRef = doc(db, 'games', gameId);
+            
             await updateDoc(gameRef, {
                 [`players.${user.uid}`]: {
                     id: user.uid,
-                    joinOrder: Object.keys(gameData.players || {}).length + 1,
-                    name: `Player ${Object.keys(gameData.players || {}).length + 1}`
+                    joinOrder: 2, // Always join as player 2
+                    name: 'Player 2'
                 }
             });
+            
             console.log("Successfully joined game");
         } catch (error) {
             console.error("Error joining game:", error);
@@ -259,7 +258,6 @@ export default function GuessWhoGame() {
         console.log("Creating game with ID:", newGameId);
 
         try {
-            const { doc, setDoc, updateDoc, arrayUnion, serverTimestamp } = require('firebase/firestore');
             const gameRef = doc(db, 'games', newGameId);
 
             const initialData = {
@@ -319,7 +317,6 @@ export default function GuessWhoGame() {
         const player2Id = playerKeys.find(id => gameData.players[id].joinOrder === 2);
 
         try {
-            const { doc, updateDoc, arrayUnion } = require('firebase/firestore');
             const gameRef = doc(db, 'games', gameId);
             await updateDoc(gameRef, {
                 [`players.${player1Id}.secretCharacter`]: p1Secret,
@@ -344,7 +341,6 @@ export default function GuessWhoGame() {
         if (!gameId || !chatInput.trim() || !user || !db) return;
 
         try {
-            const { doc, updateDoc, arrayUnion } = require('firebase/firestore');
             const gameRef = doc(db, 'games', gameId);
             await updateDoc(gameRef, {
                 chat: arrayUnion({
@@ -364,7 +360,6 @@ export default function GuessWhoGame() {
         if (!gameId || !questionInput.trim() || !user || !me || !db) return;
 
         try {
-            const { doc, updateDoc, arrayUnion } = require('firebase/firestore');
             const gameRef = doc(db, 'games', gameId);
             await updateDoc(gameRef, {
                 questions: arrayUnion({
@@ -392,7 +387,6 @@ export default function GuessWhoGame() {
         updatedQuestions[updatedQuestions.length - 1].answer = answer;
 
         try {
-            const { doc, updateDoc, arrayUnion } = require('firebase/firestore');
             const gameRef = doc(db, 'games', gameId);
             await updateDoc(gameRef, {
                 questions: updatedQuestions,
@@ -415,7 +409,6 @@ export default function GuessWhoGame() {
         const character = gameData.characters.find(c => c.id === characterId);
 
         try {
-            const { doc, updateDoc, arrayUnion } = require('firebase/firestore');
             const gameRef = doc(db, 'games', gameId);
             if (isCorrect) {
                 await updateDoc(gameRef, {
@@ -485,19 +478,13 @@ export default function GuessWhoGame() {
         );
     }
 
-    // Error state with more details
+    // Error state
     if (error) {
         return (
             <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white">
                 <div className="text-center bg-gray-800 p-8 rounded-lg max-w-md">
                     <h1 className="text-2xl font-bold mb-4 text-red-400">Error</h1>
                     <p className="mb-4 text-gray-300 text-sm">{error}</p>
-                    <div className="mb-4 text-xs text-gray-500">
-                        <p>Debug info:</p>
-                        <p>Firebase Error: {firebaseError ? 'Yes' : 'No'}</p>
-                        <p>Auth: {auth ? 'Initialized' : 'Not initialized'}</p>
-                        <p>DB: {db ? 'Initialized' : 'Not initialized'}</p>
-                    </div>
                     <button 
                         onClick={() => {
                             setError(null);
@@ -535,7 +522,7 @@ export default function GuessWhoGame() {
         );
     }
 
-    // Waiting state
+    // Waiting state - FIXED with manual join
     if (gameState === 'waiting') {
         return (
             <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white p-4">
@@ -556,18 +543,22 @@ export default function GuessWhoGame() {
                         Copy Link
                     </button>
                     
+                    {/* MANUAL JOIN BUTTON - ADDED */}
                     {playerIds.length < 2 && (
-                    <div className="mb-6 p-4 bg-yellow-900/30 rounded border border-yellow-600">
-                        <p className="text-yellow-400 mb-2 text-sm">Not joining automatically?</p>
-                        <button 
-                            onClick={joinGame}
-                            className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
-                        >
-                            Join Game Manually
-                        </button>
-                    </div>
+                        <div className="mb-4 p-3 bg-red-900/30 rounded border border-red-600">
+                            <p className="text-red-400 mb-2 text-sm">Auto-join not working?</p>
+                            <button 
+                                onClick={async () => {
+                                    console.log('Manual join clicked');
+                                    await joinGame();
+                                }}
+                                className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+                            >
+                                🚨 JOIN GAME MANUALLY
+                            </button>
+                        </div>
                     )}
-
+                    
                     {playerIds.length === 2 && gameData?.hostId === user?.uid && (
                         <div className="pt-6 border-t border-gray-600">
                             <p className="text-green-400 mb-4">Both players joined!</p>
@@ -582,6 +573,14 @@ export default function GuessWhoGame() {
                     
                     <div className="mt-4 text-sm text-gray-500">
                         Players: {playerIds.length} / 2
+                    </div>
+                    
+                    {/* DEBUG INFO - ADDED */}
+                    <div className="mt-4 p-3 bg-gray-700 rounded text-xs">
+                        <p>Debug:</p>
+                        <p>Game ID: {gameId}</p>
+                        <p>User: {user?.uid?.substring(0, 8)}</p>
+                        <p>Players: {playerIds.length}</p>
                     </div>
                     
                     <button 
