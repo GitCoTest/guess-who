@@ -312,17 +312,34 @@ export default function GuessWhoGame() {
         const p1Secret = chars.splice(Math.floor(Math.random() * chars.length), 1)[0];
         const p2Secret = chars.splice(Math.floor(Math.random() * chars.length), 1)[0];
         
+        // FIXED: Better player ID detection
         const playerKeys = Object.keys(gameData.players);
+        console.log('All player keys:', playerKeys);
+        console.log('Players data:', gameData.players);
+        
         const player1Id = playerKeys.find(id => gameData.players[id].joinOrder === 1);
         const player2Id = playerKeys.find(id => gameData.players[id].joinOrder === 2);
+        
+        console.log('Player 1 ID:', player1Id);
+        console.log('Player 2 ID:', player2Id);
+        
+        // SAFETY CHECK: Use first player if joinOrder logic fails
+        const safePlayer1Id = player1Id || playerKeys[0];
+        const safePlayer2Id = player2Id || playerKeys[1];
+
+        if (!safePlayer1Id || !safePlayer2Id) {
+            console.error('Could not find both players!');
+            setError('Could not find both players to start game');
+            return;
+        }
 
         try {
             const gameRef = doc(db, 'games', gameId);
             await updateDoc(gameRef, {
-                [`players.${player1Id}.secretCharacter`]: p1Secret,
-                [`players.${player2Id}.secretCharacter`]: p2Secret,
+                [`players.${safePlayer1Id}.secretCharacter`]: p1Secret,
+                [`players.${safePlayer2Id}.secretCharacter`]: p2Secret,
                 'gameState.status': 'playing',
-                'gameState.currentPlayerId': player1Id,
+                'gameState.currentPlayerId': safePlayer1Id, // FIXED: Ensure this is not undefined
                 chat: arrayUnion({
                     userId: 'System',
                     message: 'Game started! Player 1 goes first.',
