@@ -22,32 +22,32 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Character data
+// Replace your current defaultCharacters array with this:
 const defaultCharacters = [
-    { id: 1, name: 'Alex', image: 'https://placehold.co/150x150/F4A261/000000?text=Alex' },
-    { id: 2, name: 'Ben', image: 'https://placehold.co/150x150/2A9D8F/FFFFFF?text=Ben' },
-    { id: 3, name: 'Carmen', image: 'https://placehold.co/150x150/E9C46A/000000?text=Carmen' },
-    { id: 4, name: 'David', image: 'https://placehold.co/150x150/F4A261/000000?text=David' },
-    { id: 5, name: 'Emily', image: 'https://placehold.co/150x150/264653/FFFFFF?text=Emily' },
-    { id: 6, name: 'Frank', image: 'https://placehold.co/150x150/E76F51/000000?text=Frank' },
-    { id: 7, name: 'Grace', image: 'https://placehold.co/150x150/F4A261/000000?text=Grace' },
-    { id: 8, name: 'Henry', image: 'https://placehold.co/150x150/2A9D8F/FFFFFF?text=Henry' },
-    { id: 9, name: 'Ivy', image: 'https://placehold.co/150x150/E9C46A/000000?text=Ivy' },
-    { id: 10, name: 'Jack', image: 'https://placehold.co/150x150/F4A261/000000?text=Jack' },
-    { id: 11, name: 'Kate', image: 'https://placehold.co/150x150/264653/FFFFFF?text=Kate' },
-    { id: 12, name: 'Leo', image: 'https://placehold.co/150x150/E76F51/000000?text=Leo' },
-    { id: 13, name: 'Maria', image: 'https://placehold.co/150x150/F4A261/000000?text=Maria' },
-    { id: 14, name: 'Noah', image: 'https://placehold.co/150x150/2A9D8F/FFFFFF?text=Noah' },
-    { id: 15, name: 'Olivia', image: 'https://placehold.co/150x150/E9C46A/000000?text=Olivia' },
-    { id: 16, name: 'Paul', image: 'https://placehold.co/150x150/F4A261/000000?text=Paul' },
-    { id: 17, name: 'Quinn', image: 'https://placehold.co/150x150/264653/FFFFFF?text=Quinn' },
-    { id: 18, name: 'Rachel', image: 'https://placehold.co/150x150/E76F51/000000?text=Rachel' },
-    { id: 19, name: 'Sam', image: 'https://placehold.co/150x150/F4A261/000000?text=Sam' },
-    { id: 20, name: 'Tina', image: 'https://placehold.co/150x150/2A9D8F/FFFFFF?text=Tina' },
-    { id: 21, name: 'Uma', image: 'https://placehold.co/150x150/E9C46A/000000?text=Uma' },
-    { id: 22, name: 'Victor', image: 'https://placehold.co/150x150/F4A261/000000?text=Victor' },
-    { id: 23, name: 'Wendy', image: 'https://placehold.co/150x150/264653/FFFFFF?text=Wendy' },
-    { id: 24, name: 'Zane', image: 'https://placehold.co/150x150/E76F51/000000?text=Zane' }
+    { id: 1, name: 'Alex', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex' },
+    { id: 2, name: 'Ben', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Ben' },
+    { id: 3, name: 'Carmen', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Carmen' },
+    { id: 4, name: 'David', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=David' },
+    { id: 5, name: 'Emily', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Emily' },
+    { id: 6, name: 'Frank', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Frank' },
+    { id: 7, name: 'Grace', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Grace' },
+    { id: 8, name: 'Henry', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Henry' },
+    { id: 9, name: 'Ivy', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Ivy' },
+    { id: 10, name: 'Jack', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jack' },
+    { id: 11, name: 'Kate', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Kate' },
+    { id: 12, name: 'Leo', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Leo' },
+    { id: 13, name: 'Maria', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Maria' },
+    { id: 14, name: 'Noah', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Noah' },
+    { id: 15, name: 'Olivia', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Olivia' },
+    { id: 16, name: 'Paul', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Paul' },
+    { id: 17, name: 'Quinn', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Quinn' },
+    { id: 18, name: 'Rachel', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Rachel' },
+    { id: 19, name: 'Sam', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sam' },
+    { id: 20, name: 'Tina', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Tina' },
+    { id: 21, name: 'Uma', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Uma' },
+    { id: 22, name: 'Victor', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Victor' },
+    { id: 23, name: 'Wendy', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Wendy' },
+    { id: 24, name: 'Zane', image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Zane' }
 ];
 
 // Helper functions
@@ -237,7 +237,7 @@ export default function GuessWhoGame() {
                             setShowCharacterSelection(true);
                         }
                     }
-                    
+
                     if (data.gameState?.status === 'waiting' && !isPlayerInGame && hasSpace) {
                         console.log('Auto-joining game...');
                         try {
