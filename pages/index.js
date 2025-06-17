@@ -92,6 +92,8 @@ export default function GuessWhoGame() {
     const [chatInput, setChatInput] = useState('');
     const [questionInput, setQuestionInput] = useState('');
     const [showGuessModal, setShowGuessModal] = useState(false);
+    const [showCharacterSelection, setShowCharacterSelection] = useState(false);
+    const [selectedCharacter, setSelectedCharacter] = useState(null);
 
     const chatEndRef = useRef(null);
 
@@ -161,6 +163,38 @@ export default function GuessWhoGame() {
         }
     }, [gameId]);
 
+    // Add this useEffect with your other useEffects:
+    useEffect(() => {
+        if (!gameData || gameData.gameState?.status !== 'character-selection') return;
+        
+        const players = Object.values(gameData.players || {});
+        const playersWithCharacters = players.filter(p => p.hasSelectedCharacter);
+        
+        // If both players have selected characters, start the actual game
+        if (playersWithCharacters.length === 2 && gameData.hostId === user?.uid) {
+            const startActualGame = async () => {
+                try {
+                    const gameRef = doc(db, 'games', gameId);
+                    const playerKeys = Object.keys(gameData.players);
+                    const player1Id = playerKeys.find(id => gameData.players[id].joinOrder === 1);
+                    
+                    await updateDoc(gameRef, {
+                        'gameState.status': 'playing',
+                        'gameState.currentPlayerId': player1Id,
+                        chat: arrayUnion({
+                            userId: 'System',
+                            message: 'Both players have chosen! Game begins now. Player 1 goes first.',
+                            timestamp: new Date()
+                        })
+                    });
+                } catch (error) {
+                    console.error("Error starting actual game:", error);
+                }
+            };
+            
+            startActualGame();
+        }
+    }, [gameData, gameId, user]);
     // Listen to game updates - FIXED auto-join
     useEffect(() => {
         if (!gameId || !user || !db) return;
@@ -196,6 +230,14 @@ export default function GuessWhoGame() {
                         currentPlayers: currentPlayers.length
                     });
 
+                    if (data.gameState?.status === 'character-selection') {
+                        setGameState('character-selection');
+                        // Show character selection if this player hasn't chosen yet
+                        if (!data.players[user.uid]?.hasSelectedCharacter) {
+                            setShowCharacterSelection(true);
+                        }
+                    }
+                    
                     if (data.gameState?.status === 'waiting' && !isPlayerInGame && hasSpace) {
                         console.log('Auto-joining game...');
                         try {
@@ -308,24 +350,10 @@ export default function GuessWhoGame() {
     const startGame = async () => {
         if (!gameId || !gameData || !user || !db) return;
 
-        const chars = [...gameData.characters];
-        const p1Secret = chars.splice(Math.floor(Math.random() * chars.length), 1)[0];
-        const p2Secret = chars.splice(Math.floor(Math.random() * chars.length), 1)[0];
-        
-        // FIXED: Better player ID detection
+        // Don't assign characters yet - let players choose
         const playerKeys = Object.keys(gameData.players);
-        console.log('All player keys:', playerKeys);
-        console.log('Players data:', gameData.players);
-        
-        const player1Id = playerKeys.find(id => gameData.players[id].joinOrder === 1);
-        const player2Id = playerKeys.find(id => gameData.players[id].joinOrder === 2);
-        
-        console.log('Player 1 ID:', player1Id);
-        console.log('Player 2 ID:', player2Id);
-        
-        // SAFETY CHECK: Use first player if joinOrder logic fails
-        const safePlayer1Id = player1Id || playerKeys[0];
-        const safePlayer2Id = player2Id || playerKeys[1];
+        const safePlayer1Id = playerKeys.find(id => gameData.players[id].joinOrder === 1) || playerKeys[0];
+        const safePlayer2Id = playerKeys.find(id => gameData.players[id].joinOrder === 2) || playerKeys[1];
 
         if (!safePlayer1Id || !safePlayer2Id) {
             console.error('Could not find both players!');
@@ -336,20 +364,44 @@ export default function GuessWhoGame() {
         try {
             const gameRef = doc(db, 'games', gameId);
             await updateDoc(gameRef, {
-                [`players.${safePlayer1Id}.secretCharacter`]: p1Secret,
-                [`players.${safePlayer2Id}.secretCharacter`]: p2Secret,
-                'gameState.status': 'playing',
-                'gameState.currentPlayerId': safePlayer1Id, // FIXED: Ensure this is not undefined
+                'gameState.status': 'character-selection', // NEW STATUS
+                'gameState.currentPlayerId': safePlayer1Id,
                 chat: arrayUnion({
                     userId: 'System',
-                    message: 'Game started! Player 1 goes first.',
+                    message: 'Game started! Both players need to choose their secret character.',
                     timestamp: new Date()
                 })
             });
-            console.log("Game started successfully");
+            
+            // Show character selection for this player
+            setShowCharacterSelection(true);
+            console.log("Game started - character selection phase");
         } catch (error) {
             console.error("Error starting game:", error);
             setError(`Failed to start game: ${error.message}`);
+        }
+    };
+
+    const selectCharacter = async (character) => {
+        if (!gameId || !user || !db) return;
+    
+        try {
+            const gameRef = doc(db, 'games', gameId);
+            await updateDoc(gameRef, {
+                [`players.${user.uid}.secretCharacter`]: character,
+                [`players.${user.uid}.hasSelectedCharacter`]: true,
+                chat: arrayUnion({
+                    userId: 'System',
+                    message: `${me?.name || 'Player'} has chosen their secret character.`,
+                    timestamp: new Date()
+                })
+            });
+            
+            setSelectedCharacter(character);
+            setShowCharacterSelection(false);
+            console.log("Character selected:", character.name);
+        } catch (error) {
+            console.error("Error selecting character:", error);
         }
     };
 
@@ -374,7 +426,7 @@ export default function GuessWhoGame() {
 
     const askQuestion = async (e) => {
         e.preventDefault();
-        if (!gameId || !questionInput.trim() || !user || !me || !db) return;
+        if (!gameId || !questionInput.trim() || !user || !me || !opponent || !db) return;
 
         try {
             const gameRef = doc(db, 'games', gameId);
@@ -385,9 +437,10 @@ export default function GuessWhoGame() {
                     answer: null,
                     timestamp: new Date()
                 }),
+                // DON'T CHANGE TURN YET - wait for answer
                 chat: arrayUnion({
                     userId: 'System',
-                    message: `${me.name} asked: "${questionInput.trim()}"`,
+                    message: `${me.name} asked: "${questionInput.trim()}" - Waiting for ${opponent.name} to answer...`,
                     timestamp: new Date()
                 })
             });
@@ -407,10 +460,11 @@ export default function GuessWhoGame() {
             const gameRef = doc(db, 'games', gameId);
             await updateDoc(gameRef, {
                 questions: updatedQuestions,
-                'gameState.currentPlayerId': lastQuestion.askerId,
+                // FIXED: Switch turn to the person who answered (so they can ask next)
+                'gameState.currentPlayerId': user.uid, // Person who answered gets to ask next
                 chat: arrayUnion({
                     userId: 'System',
-                    message: `${me.name} answered: ${answer.toUpperCase()}. It's ${opponent.name}'s turn.`,
+                    message: `${me.name} answered: ${answer.toUpperCase()}. Now it's ${me.name}'s turn to ask a question!`,
                     timestamp: new Date()
                 })
             });
@@ -630,6 +684,58 @@ export default function GuessWhoGame() {
                         Play Again
                     </button>
                 </GameModal>
+            </div>
+        );
+    }
+
+    // Add this in your render section, before the main game view:
+
+    // Character Selection Modal
+    if (showCharacterSelection || (gameData?.gameState?.status === 'character-selection' && !me?.hasSelectedCharacter)) {
+        return (
+            <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white p-4">
+                <div className="bg-gray-800 p-6 rounded-lg max-w-4xl w-full">
+                    <h2 className="text-2xl font-bold mb-4 text-center">Choose Your Secret Character</h2>
+                    <p className="text-center text-gray-400 mb-6">
+                        Select the character your opponent will try to guess:
+                    </p>
+                    
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 max-h-96 overflow-y-auto">
+                        {gameData?.characters?.map(char => (
+                            <div
+                                key={char.id}
+                                onClick={() => selectCharacter(char)}
+                                className="cursor-pointer hover:bg-gray-700 p-2 rounded transition-all hover:scale-105 border-2 border-transparent hover:border-indigo-500"
+                            >
+                                <img src={char.image} alt={char.name} className="w-full rounded mb-1" />
+                                <p className="text-xs text-center">{char.name}</p>
+                            </div>
+                        ))}
+                    </div>
+                    
+                    <div className="mt-4 text-center text-sm text-gray-500">
+                        Click on a character to select them as your secret character
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // Waiting for other player to choose
+    if (gameData?.gameState?.status === 'character-selection' && me?.hasSelectedCharacter) {
+        const players = Object.values(gameData.players || {});
+        const playersWithCharacters = players.filter(p => p.hasSelectedCharacter);
+        
+        return (
+            <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white p-4">
+                <div className="text-center bg-gray-800 p-8 rounded-lg">
+                    <h2 className="text-2xl font-bold mb-4">Waiting for opponent...</h2>
+                    <p className="text-gray-400 mb-4">You chose: <span className="text-indigo-400 font-bold">{me.secretCharacter?.name}</span></p>
+                    <p className="text-gray-500">Waiting for the other player to choose their character.</p>
+                    <div className="mt-4 text-sm text-gray-600">
+                        Players ready: {playersWithCharacters.length} / 2
+                    </div>
+                </div>
             </div>
         );
     }
