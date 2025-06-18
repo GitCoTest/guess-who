@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/router';
-import { useState, useRef } from 'react';
 
 // Import Firebase at top level
 import { initializeApp } from 'firebase/app';
@@ -54,7 +53,7 @@ const defaultCharacters = [
 // Helper functions
 const generateGameId = () => Math.random().toString(36).substring(2, 8);
 
-// Components - DEFINE ALL COMPONENTS FIRST
+// Components
 const LoadingSpinner = () => (
     <div className="flex flex-col items-center justify-center h-full text-white">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
@@ -79,7 +78,7 @@ const GameModal = ({ title, children, onClose }) => (
     </div>
 );
 
-// Custom Character Form Component - BUILD-SAFE VERSION
+// Custom Character Form Component
 const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomDeckProgress, onComplete, onCancel }) => {
     const [currentName, setCurrentName] = useState('');
     const [selectedFile, setSelectedFile] = useState(null);
@@ -93,7 +92,7 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
     const handleImageChange = (e) => {
         const file = e.target.files[0];
         if (file) {
-            if (file.size > 5 * 1024 * 1024) { // 5MB limit
+            if (file.size > 5 * 1024 * 1024) {
                 alert('Image must be smaller than 5MB');
                 return;
             }
@@ -122,22 +121,14 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
                         const canvas = document.createElement('canvas');
                         const ctx = canvas.getContext('2d');
                         
-                        // Determine the size for square crop (use smaller dimension)
                         const size = Math.min(img.width, img.height);
-                        canvas.width = 300; // Output size
-                        canvas.height = 300; // Output size
+                        canvas.width = 300;
+                        canvas.height = 300;
                         
-                        // Calculate crop position (center)
                         const startX = (img.width - size) / 2;
                         const startY = (img.height - size) / 2;
                         
-                        // Draw cropped image
-                        ctx.drawImage(
-                            img,
-                            startX, startY, size, size, // source
-                            0, 0, 300, 300 // destination
-                        );
-                        
+                        ctx.drawImage(img, startX, startY, size, size, 0, 0, 300, 300);
                         resolve(canvas.toDataURL('image/jpeg', 0.8));
                     } catch (canvasError) {
                         reject(canvasError);
@@ -208,7 +199,6 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
             setCustomCharacters(updatedCharacters);
             setCustomDeckProgress(updatedCharacters.length);
 
-            // Reset form
             setCurrentName('');
             setSelectedFile(null);
             setPreviewUrl('');
@@ -384,7 +374,6 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
                         </div>
                     ))}
                     
-                    {/* Empty slots */}
                     {Array.from({length: Math.min(remainingSlots, 12)}).map((_, i) => (
                         <div key={`empty-${i}`} className="w-full h-20 bg-gray-700 rounded border-2 border-dashed border-gray-600 flex items-center justify-center">
                             <span className="text-gray-500 text-xs">Empty</span>
@@ -408,7 +397,7 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
 export default function GuessWhoGame() {
     const router = useRouter();
     
-    // State
+    // State - FIXED: Added missing isSelectingCharacter
     const [user, setUser] = useState(null);
     const [gameState, setGameState] = useState('menu');
     const [gameId, setGameId] = useState(null);
@@ -421,6 +410,7 @@ export default function GuessWhoGame() {
     const [showGuessModal, setShowGuessModal] = useState(false);
     const [showCharacterSelection, setShowCharacterSelection] = useState(false);
     const [selectedCharacter, setSelectedCharacter] = useState(null);
+    const [isSelectingCharacter, setIsSelectingCharacter] = useState(false); // ✅ FIXED: Added this
 
     // Custom deck states
     const [showDeckSelection, setShowDeckSelection] = useState(false);
@@ -457,26 +447,21 @@ export default function GuessWhoGame() {
         return questions.length > 0 ? questions[questions.length - 1] : null;
     }, [gameData?.questions]);
 
-    // COMBINED useEffect
+    // Effects
     useEffect(() => {
         let unsubscribeAuth = null;
         let unsubscribeGame = null;
 
-        // Firebase Auth Setup
         const setupAuth = () => {
             unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
                 if (currentUser) {
-                    console.log("User authenticated:", currentUser.uid);
                     setUser(currentUser);
                     setLoading(false);
                 } else {
-                    console.log("No user, signing in anonymously...");
                     try {
                         const result = await signInAnonymously(auth);
-                        console.log("Anonymous sign-in successful:", result.user.uid);
                         setUser(result.user);
                     } catch (error) {
-                        console.error("Auth error:", error);
                         setError(`Authentication failed: ${error.message}`);
                     } finally {
                         setLoading(false);
@@ -485,14 +470,12 @@ export default function GuessWhoGame() {
             });
         };
 
-        // URL Detection
         const checkURL = () => {
             if (typeof window !== 'undefined') {
                 const path = window.location.pathname;
                 if (path.startsWith('/play/')) {
                     const id = path.split('/play/')[1];
                     if (id && id !== gameId) {
-                        console.log('Setting game ID from URL:', id);
                         setGameId(id);
                         setGameState('waiting');
                     }
@@ -500,21 +483,16 @@ export default function GuessWhoGame() {
             }
         };
 
-        // Game Listener Setup
         const setupGameListener = () => {
             if (!gameId || !user || !db) return;
 
-            console.log('Setting up game listener for:', gameId, 'user:', user.uid);
             const gameRef = doc(db, 'games', gameId);
-            
             unsubscribeGame = onSnapshot(gameRef, 
                 async (docSnap) => {
                     if (docSnap.exists()) {
                         const data = docSnap.data();
-                        console.log("Game data updated:", data);
                         setGameData(data);
                         
-                        // Update game state based on data
                         if (data.gameState?.status === 'waiting') {
                             setGameState('waiting');
                         } else if (data.gameState?.status === 'character-selection') {
@@ -528,13 +506,11 @@ export default function GuessWhoGame() {
                             setGameState('finished');
                         }
 
-                        // Auto-join logic
                         const currentPlayers = Object.keys(data.players || {});
                         const isPlayerInGame = currentPlayers.includes(user.uid);
                         const hasSpace = currentPlayers.length < 2;
                         
                         if (data.gameState?.status === 'waiting' && !isPlayerInGame && hasSpace) {
-                            console.log('Auto-joining game...');
                             try {
                                 await joinGame();
                             } catch (error) {
@@ -542,13 +518,11 @@ export default function GuessWhoGame() {
                             }
                         }
 
-                        // Character selection completion check
                         if (data.gameState?.status === 'character-selection') {
                             const players = Object.values(data.players || {});
                             const playersWithCharacters = players.filter(p => p.hasSelectedCharacter);
                             
                             if (playersWithCharacters.length === 2 && data.hostId === user?.uid) {
-                                console.log('Both players selected characters, starting game...');
                                 try {
                                     const gameRef = doc(db, 'games', gameId);
                                     const playerKeys = Object.keys(data.players);
@@ -559,30 +533,27 @@ export default function GuessWhoGame() {
                                         'gameState.currentPlayerId': player1Id,
                                         chat: arrayUnion({
                                             userId: 'System',
-                                            message: 'Both players have chosen! Game begins now. Player 1 goes first.',
+                                            message: 'Both players have chosen! Game begins now.',
                                             timestamp: new Date()
                                         })
                                     });
                                 } catch (error) {
-                                    console.error("Error starting actual game:", error);
+                                    console.error("Error starting game:", error);
                                 }
                             }
                         }
 
-                        // Auto-scroll chat
                         setTimeout(() => {
                             chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
                         }, 100);
 
                     } else {
-                        console.log("Game not found");
                         setError("Game not found");
                         setGameState('menu');
                         setGameId(null);
                     }
                 },
                 (error) => {
-                    console.error("Game listener error:", error);
                     setError(`Failed to connect to game: ${error.message}`);
                 }
             );
@@ -590,10 +561,7 @@ export default function GuessWhoGame() {
 
         setupAuth();
         checkURL();
-        
-        if (gameId && user) {
-            setupGameListener();
-        }
+        if (gameId && user) setupGameListener();
 
         return () => {
             if (unsubscribeAuth) unsubscribeAuth();
@@ -603,15 +571,10 @@ export default function GuessWhoGame() {
 
     // Game functions
     const joinGame = async () => {
-        if (!user || !gameId || !db) {
-            console.error('Missing requirements for join:', { user: !!user, gameId, db: !!db });
-            return;
-        }
+        if (!user || !gameId || !db) return;
         
         try {
-            console.log('Attempting to join game:', gameId, 'as user:', user.uid);
             const gameRef = doc(db, 'games', gameId);
-            
             await updateDoc(gameRef, {
                 [`players.${user.uid}`]: {
                     id: user.uid,
@@ -619,10 +582,7 @@ export default function GuessWhoGame() {
                     name: 'Player 2'
                 }
             });
-            
-            console.log("Successfully joined game");
         } catch (error) {
-            console.error("Error joining game:", error);
             setError(`Failed to join game: ${error.message}`);
         }
     };
@@ -631,19 +591,12 @@ export default function GuessWhoGame() {
         if (!user || !db) return;
 
         const newGameId = generateGameId();
-        console.log("Creating game with ID:", newGameId);
 
         try {
             const gameRef = doc(db, 'games', newGameId);
-
-            // Use custom characters if available, otherwise use default
             const gameCharacters = deckType === 'custom' && customCharacters.length >= 1 
                 ? customCharacters 
                 : defaultCharacters;
-
-            console.log('Creating game with characters:', gameCharacters); // Debug log
-            console.log('Deck type:', deckType); // Debug log
-            console.log('Custom characters length:', customCharacters.length); // Debug log
 
             const initialData = {
                 id: newGameId,
@@ -669,12 +622,10 @@ export default function GuessWhoGame() {
             };
 
             await setDoc(gameRef, initialData);
-            console.log("Game created successfully with data:", initialData);
-            
             await updateDoc(gameRef, {
                 chat: arrayUnion({
                     userId: 'System',
-                    message: `Game created with ${deckType} deck (${gameCharacters.length} characters). Waiting for another player...`,
+                    message: `Game created with ${deckType} deck (${gameCharacters.length} characters).`,
                     timestamp: new Date()
                 })
             });
@@ -688,7 +639,6 @@ export default function GuessWhoGame() {
                 window.history.pushState({}, '', `/play/${newGameId}`);
             }
         } catch (error) {
-            console.error("Error creating game:", error);
             setError(`Failed to create game: ${error.message}`);
         }
     };
@@ -698,13 +648,6 @@ export default function GuessWhoGame() {
 
         const playerKeys = Object.keys(gameData.players);
         const safePlayer1Id = playerKeys.find(id => gameData.players[id].joinOrder === 1) || playerKeys[0];
-        const safePlayer2Id = playerKeys.find(id => gameData.players[id].joinOrder === 2) || playerKeys[1];
-
-        if (!safePlayer1Id || !safePlayer2Id) {
-            console.error('Could not find both players!');
-            setError('Could not find both players to start game');
-            return;
-        }
 
         try {
             const gameRef = doc(db, 'games', gameId);
@@ -719,33 +662,19 @@ export default function GuessWhoGame() {
             });
             
             setShowCharacterSelection(true);
-            console.log("Game started - character selection phase");
         } catch (error) {
-            console.error("Error starting game:", error);
             setError(`Failed to start game: ${error.message}`);
         }
     };
 
     const selectCharacter = async (character) => {
-        if (!gameId || !user || !db || !character) {
-            console.error('Missing requirements for character selection:', { gameId, user: !!user, db: !!db, character });
-            return;
-        }
-    
-        // Prevent double-clicks
-        if (isSelectingCharacter) {
-            console.log('Already selecting a character, ignoring click');
-            return;
-        }
-    
+        if (!gameId || !user || !db || !character || isSelectingCharacter) return;
+
         try {
             setIsSelectingCharacter(true);
-            console.log('Attempting to select character:', character.name, 'for user:', user.uid);
-            
             const gameRef = doc(db, 'games', gameId);
             
-            // Create the update object
-            const updateData = {
+            await updateDoc(gameRef, {
                 [`players.${user.uid}.secretCharacter`]: {
                     id: character.id,
                     name: character.name,
@@ -757,20 +686,12 @@ export default function GuessWhoGame() {
                     message: `${me?.name || 'Player'} has chosen their secret character.`,
                     timestamp: new Date()
                 })
-            };
+            });
             
-            console.log('Updating Firebase with:', updateData);
-            
-            await updateDoc(gameRef, updateData);
-            
-            // Update local state
             setSelectedCharacter(character);
             setShowCharacterSelection(false);
             
-            console.log("✅ Character selected successfully:", character.name);
-            
         } catch (error) {
-            console.error("❌ Error selecting character:", error);
             alert(`Failed to select character: ${error.message}`);
         } finally {
             setIsSelectingCharacter(false);
@@ -811,7 +732,7 @@ export default function GuessWhoGame() {
                 }),
                 chat: arrayUnion({
                     userId: 'System',
-                    message: `${me.name} asked: "${questionInput.trim()}" - Waiting for ${opponent.name} to answer...`,
+                    message: `${me.name} asked: "${questionInput.trim()}"`,
                     timestamp: new Date()
                 })
             });
@@ -834,7 +755,7 @@ export default function GuessWhoGame() {
                 'gameState.currentPlayerId': user.uid,
                 chat: arrayUnion({
                     userId: 'System',
-                    message: `${me.name} answered: ${answer.toUpperCase()}. Now it's ${me.name}'s turn to ask a question!`,
+                    message: `${me.name} answered: ${answer.toUpperCase()}`,
                     timestamp: new Date()
                 })
             });
@@ -866,7 +787,7 @@ export default function GuessWhoGame() {
                     'gameState.currentPlayerId': opponent.id,
                     chat: arrayUnion({
                         userId: 'System',
-                        message: `${me.name} guessed ${character.name} incorrectly. ${opponent.name}'s turn.`,
+                        message: `${me.name} guessed ${character.name} incorrectly.`,
                         timestamp: new Date()
                     })
                 });
@@ -907,14 +828,14 @@ export default function GuessWhoGame() {
     const copyGameLink = () => {
         if (typeof window !== 'undefined' && navigator.clipboard) {
             navigator.clipboard.writeText(window.location.href).then(() => {
-                alert('Game link copied to clipboard!');
+                alert('Game link copied!');
             }).catch(() => {
                 alert('Failed to copy link');
             });
         }
     };
 
-    // Loading state
+    // Render logic
     if (loading) {
         return (
             <div className="bg-gray-900 min-h-screen flex items-center justify-center">
@@ -923,7 +844,6 @@ export default function GuessWhoGame() {
         );
     }
 
-    // Error state
     if (error) {
         return (
             <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white">
@@ -946,7 +866,6 @@ export default function GuessWhoGame() {
         );
     }
 
-    // Custom Character Creation Screen - UPDATED HEADER
     if (isCreatingCustomDeck) {
         return (
             <div className="bg-gray-900 min-h-screen text-white p-4">
@@ -988,13 +907,12 @@ export default function GuessWhoGame() {
         );
     }
 
-    // Menu state
     if (gameState === 'menu') {
         return (
             <div className="bg-gray-900 min-h-screen flex flex-col items-center justify-center text-white p-4">
                 <div className="text-center max-w-md w-full">
                     <h1 className="text-4xl font-bold mb-4 text-indigo-400">Guess Who? Online</h1>
-                    <p className="text-lg text-gray-300 mb-8">Play the classic guessing game with a friend!</p>
+                    <p className="text-lg text-gray-300 mb-8">Play the classic guessing game!</p>
                     
                     {!showDeckSelection ? (
                         <button 
@@ -1005,7 +923,7 @@ export default function GuessWhoGame() {
                         </button>
                     ) : (
                         <div className="space-y-4">
-                            <h2 className="text-xl font-bold mb-4">Choose Your Character Deck</h2>
+                            <h2 className="text-xl font-bold mb-4">Choose Deck Type</h2>
                             
                             <button
                                 onClick={() => {
@@ -1015,7 +933,7 @@ export default function GuessWhoGame() {
                                 className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-colors mb-3"
                             >
                                 🎲 Standard Deck
-                                <p className="text-sm text-green-200 mt-1">24 pre-made characters</p>
+                                <p className="text-sm text-green-200 mt-1">24 pre-made avatars</p>
                             </button>
                             
                             <button
@@ -1026,7 +944,7 @@ export default function GuessWhoGame() {
                                 className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg transition-colors mb-3"
                             >
                                 🎨 Custom Deck
-                                <p className="text-sm text-purple-200 mt-1">Create your own characters(1-24)</p>
+                                <p className="text-sm text-purple-200 mt-1">Create your own characters (1-24)</p>
                             </button>
                             
                             <button
@@ -1038,162 +956,82 @@ export default function GuessWhoGame() {
                         </div>
                     )}
                 </div>
-                
-                <div className="mt-8 text-center text-gray-500">
-                    <p>User ID: <span className="font-mono bg-gray-800 p-1 rounded text-xs">{user?.uid?.substring(0, 8)}...</span></p>
-                </div>
             </div>
         );
     }
 
-    // Character Selection Modal - IMPROVED VERSION
     if (showCharacterSelection || (gameData?.gameState?.status === 'character-selection' && !me?.hasSelectedCharacter)) {
         const availableCharacters = gameData?.characters || defaultCharacters;
-        
-        console.log('Character selection screen - available characters:', availableCharacters.length);
-        console.log('Current user has selected character:', me?.hasSelectedCharacter);
         
         return (
             <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white p-4">
                 <div className="bg-gray-800 p-6 rounded-lg max-w-4xl w-full">
                     <h2 className="text-2xl font-bold mb-4 text-center">Choose Your Secret Character</h2>
-                    <p className="text-center text-gray-400 mb-2">
-                        Select the character your opponent will try to guess:
-                    </p>
-                    <p className="text-center text-sm text-purple-400 mb-6">
-                        Using {gameData?.deckType === 'custom' ? 'Custom' : 'Standard'} deck 
-                        ({availableCharacters.length} characters)
+                    <p className="text-center text-gray-400 mb-6">
+                        Select the character your opponent will try to guess
                     </p>
                     
-                    {availableCharacters.length === 0 ? (
-                        <div className="text-center text-red-400 p-8">
-                            <p>No characters available! Something went wrong.</p>
-                            <button 
-                                onClick={() => window.location.reload()}
-                                className="mt-4 bg-red-600 hover:bg-red-700 px-4 py-2 rounded"
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 max-h-96 overflow-y-auto">
+                        {availableCharacters.map(char => (
+                            <div
+                                key={char.id}
+                                onClick={() => selectCharacter(char)}
+                                className="cursor-pointer hover:bg-gray-700 p-2 rounded transition-all hover:scale-105 border-2 border-transparent hover:border-indigo-500"
                             >
-                                Reload Page
-                            </button>
-                        </div>
-                    ) : (
-                        <>
-                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 max-h-96 overflow-y-auto">
-                                {availableCharacters.map(char => (
-                                    <div
-                                        key={`char-${char.id}`}
-                                        onClick={() => {
-                                            console.log('Character clicked:', char.name);
-                                            selectCharacter(char);
-                                        }}
-                                        className="cursor-pointer hover:bg-gray-700 p-2 rounded transition-all hover:scale-105 border-2 border-transparent hover:border-indigo-500 active:border-green-500"
-                                    >
-                                        <img 
-                                            src={char.image} 
-                                            alt={char.name} 
-                                            className="w-full rounded mb-1"
-                                            onError={(e) => {
-                                                console.error('Image failed to load:', char.image);
-                                                // Fallback to DiceBear if custom image fails
-                                                e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(char.name)}`;
-                                            }}
-                                            onLoad={() => {
-                                                console.log('Image loaded successfully:', char.name);
-                                            }}
-                                        />
-                                        <p className="text-xs text-center font-medium">{char.name}</p>
-                                    </div>
-                                ))}
+                                <img src={char.image} alt={char.name} className="w-full rounded mb-1" />
+                                <p className="text-xs text-center">{char.name}</p>
                             </div>
-                            
-                            <div className="mt-4 text-center text-sm text-gray-500">
-                                Click on a character to select them as your secret character
-                            </div>
-                            
-                            {/* Loading indicator */}
-                            {isUploading && (
-                                <div className="mt-4 text-center">
-                                    <div className="inline-flex items-center text-indigo-400">
-                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-400 mr-2"></div>
-                                        Selecting character...
-                                    </div>
-                                </div>
-                            )}
-                        </>
-                    )}
-                    
-                    {/* Debug info */}
-                    <div className="mt-4 p-2 bg-gray-700 rounded text-xs opacity-50">
-                        <p>Debug - User ID: {user?.uid?.substring(0, 8)}...</p>
-                        <p>Debug - Game ID: {gameId}</p>
-                        <p>Debug - Has selected: {me?.hasSelectedCharacter ? 'Yes' : 'No'}</p>
-                        <p>Debug - Available characters: {availableCharacters.length}</p>
+                        ))}
                     </div>
+                    
+                    {isSelectingCharacter && (
+                        <div className="mt-4 text-center text-indigo-400">
+                            Selecting character...
+                        </div>
+                    )}
                 </div>
             </div>
         );
     }
 
-    // Waiting for other player to choose
     if (gameData?.gameState?.status === 'character-selection' && me?.hasSelectedCharacter) {
-        const players = Object.values(gameData.players || {});
-        const playersWithCharacters = players.filter(p => p.hasSelectedCharacter);
-        
         return (
             <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white p-4">
                 <div className="text-center bg-gray-800 p-8 rounded-lg">
                     <h2 className="text-2xl font-bold mb-4">Waiting for opponent...</h2>
                     <p className="text-gray-400 mb-4">You chose: <span className="text-indigo-400 font-bold">{me.secretCharacter?.name}</span></p>
-                    <p className="text-gray-500">Waiting for the other player to choose their character.</p>
-                    <div className="mt-4 text-sm text-gray-600">
-                        Players ready: {playersWithCharacters.length} / 2
-                    </div>
+                    <p className="text-gray-500">Waiting for the other player to choose.</p>
                 </div>
             </div>
         );
     }
 
-    // Waiting state
     if (gameState === 'waiting') {
         return (
             <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white p-4">
-                <div className="text-center bg-gray-800 p-8 rounded-lg shadow-xl border border-gray-700 max-w-md w-full">
+                <div className="text-center bg-gray-800 p-8 rounded-lg max-w-md w-full">
                     <h2 className="text-2xl font-bold mb-4">Waiting for Player 2...</h2>
-                    <p className="text-gray-400 mb-6">Share this link with a friend:</p>
+                    <p className="text-gray-400 mb-6">Share this link:</p>
                     <input 
                         type="text" 
                         readOnly 
                         value={typeof window !== 'undefined' ? window.location.href : ''}
-                        className="w-full bg-gray-700 text-white p-2 rounded border border-gray-600 text-center mb-4 text-sm"
+                        className="w-full bg-gray-700 text-white p-2 rounded text-center mb-4 text-sm"
                         onFocus={(e) => e.target.select()}
                     />
                     <button 
                         onClick={copyGameLink}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors mb-6"
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded mb-6"
                     >
                         Copy Link
                     </button>
-                    
-                    {playerIds.length < 2 && (
-                        <div className="mb-4 p-3 bg-red-900/30 rounded border border-red-600">
-                            <p className="text-red-400 mb-2 text-sm">Auto-join not working?</p>
-                            <button 
-                                onClick={async () => {
-                                    console.log('Manual join clicked');
-                                    await joinGame();
-                                }}
-                                className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
-                            >
-                                🚨 JOIN GAME MANUALLY
-                            </button>
-                        </div>
-                    )}
                     
                     {playerIds.length === 2 && gameData?.hostId === user?.uid && (
                         <div className="pt-6 border-t border-gray-600">
                             <p className="text-green-400 mb-4">Both players joined!</p>
                             <button
                                 onClick={startGame}
-                                className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition-colors"
+                                className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded"
                             >
                                 Start Game
                             </button>
@@ -1202,8 +1040,6 @@ export default function GuessWhoGame() {
                     
                     <div className="mt-4 text-sm text-gray-500">
                         Players: {playerIds.length} / 2
-                        <br />
-                        Deck: {gameData?.deckType || 'standard'}
                     </div>
                     
                     <button 
@@ -1217,7 +1053,6 @@ export default function GuessWhoGame() {
         );
     }
 
-    // Game finished state
     if (gameState === 'finished') {
         const won = gameData?.gameState?.winnerId === user?.uid;
         return (
@@ -1227,33 +1062,25 @@ export default function GuessWhoGame() {
                         {won ? "🎉 You Won! 🎉" : "😢 You Lost 😢"}
                     </p>
                     <p className="text-gray-300 mb-4">
-                        The secret character was: <span className="font-bold text-indigo-400">{opponent?.secretCharacter?.name}</span>
+                        Secret character: <span className="font-bold text-indigo-400">{opponent?.secretCharacter?.name}</span>
                     </p>
-                    <button 
-                        onClick={resetGame}
-                        className="bg-indigo-600 hover:bg-indigo-700 px-6 py-2 rounded font-bold"
-                    >
-                        Play Again
-                    </button>
                 </GameModal>
             </div>
         );
     }
 
-    // Main game view
     if (gameState === 'playing' && gameData) {
         return (
             <div className="bg-gray-900 text-white min-h-screen p-4">
-                {/* Guess Modal */}
                 {showGuessModal && (
                     <GameModal title="Make Your Final Guess!" onClose={() => setShowGuessModal(false)}>
-                        <p className="mb-4 text-gray-300">Click on the character you think your opponent has:</p>
+                        <p className="mb-4 text-gray-300">Click on the character:</p>
                         <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto">
                             {gameData.characters.map(char => (
                                 <div 
                                     key={char.id} 
                                     onClick={() => makeGuess(char.id)} 
-                                    className="cursor-pointer hover:bg-gray-700 p-2 rounded transition-colors"
+                                    className="cursor-pointer hover:bg-gray-700 p-2 rounded"
                                 >
                                     <img src={char.image} alt={char.name} className="w-full rounded" />
                                     <p className="text-xs text-center mt-1">{char.name}</p>
@@ -1264,53 +1091,40 @@ export default function GuessWhoGame() {
                 )}
 
                 <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-4">
-                    {/* Character Board */}
-                    <div className="bg-gray-800 p-4 rounded-lg">
-                        <h2 className="text-lg font-bold mb-4">
-                            Characters - Click to eliminate 
-                            <span className="text-sm text-gray-400 ml-2">
-                                ({gameData?.deckType === 'custom' ? 'Custom' : 'Standard'} deck - {gameData?.characters?.length} total)
-                            </span>
-                        </h2>
-                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-                            {gameData.characters.map(char => {
-                                const isEliminated = eliminatedChars.has(char.id);
-                                return (
-                                    <div 
-                                        key={char.id} 
-                                        onClick={() => toggleEliminated(char.id)}
-                                        className={`cursor-pointer rounded overflow-hidden transition-all ${
-                                            isEliminated ? 'opacity-30 grayscale' : 'hover:scale-105'
-                                        }`}
-                                    >
-                                        <img 
-                                            src={char.image} 
-                                            alt={char.name} 
-                                            className="w-full"
-                                            onError={(e) => {
-                                                console.error('Image failed to load:', char.image);
-                                                e.target.src = 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + char.name;
-                                            }}
-                                        />
-                                        <p className={`text-xs text-center p-1 ${
-                                            isEliminated ? 'bg-red-900' : 'bg-gray-700'
-                                        }`}>
-                                            {char.name}
-                                        </p>
-                                    </div>
-                                );
-                            })}
+                    <div className="lg:col-span-2">
+                        <div className="bg-gray-800 p-4 rounded-lg">
+                            <h2 className="text-lg font-bold mb-4">Characters - Click to eliminate</h2>
+                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                                {gameData.characters.map(char => {
+                                    const isEliminated = eliminatedChars.has(char.id);
+                                    return (
+                                        <div 
+                                            key={char.id} 
+                                            onClick={() => toggleEliminated(char.id)}
+                                            className={`cursor-pointer rounded overflow-hidden transition-all ${
+                                                isEliminated ? 'opacity-30 grayscale' : 'hover:scale-105'
+                                            }`}
+                                        >
+                                            <img src={char.image} alt={char.name} className="w-full" />
+                                            <p className={`text-xs text-center p-1 ${
+                                                isEliminated ? 'bg-red-900' : 'bg-gray-700'
+                                            }`}>
+                                                {char.name}
+                                            </p>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
                     </div>
-                    {/* Side Panel */}
+
                     <div className="space-y-4">
-                        {/* Game Info */}
                         <div className="bg-gray-800 p-4 rounded-lg">
                             <h2 className="text-lg font-bold mb-3">Game Info</h2>
                             
                             {me?.secretCharacter && (
                                 <div className="mb-3 p-2 bg-indigo-900/50 rounded text-center">
-                                    <p className="text-sm text-gray-300">Your secret character:</p>
+                                    <p className="text-sm text-gray-300">Your character:</p>
                                     <p className="font-bold text-indigo-400">{me.secretCharacter.name}</p>
                                 </div>
                             )}
@@ -1319,16 +1133,14 @@ export default function GuessWhoGame() {
                                 isMyTurn ? 'bg-green-600/30' : 'bg-red-600/30'
                             }`}>
                                 <p className="font-bold">
-                                    {isMyTurn ? "Your Turn!" : `${opponent?.name || 'Opponent'}'s Turn`}
+                                    {isMyTurn ? "Your Turn!" : "Opponent's Turn"}
                                 </p>
                             </div>
                         </div>
 
-                        {/* Actions */}
                         <div className="bg-gray-800 p-4 rounded-lg">
                             <h2 className="text-lg font-bold mb-3">Actions</h2>
                             
-                            {/* Answer question */}
                             {lastQuestion && !lastQuestion.answer && lastQuestion.askerId !== user?.uid && (
                                 <div className="text-center">
                                     <p className="mb-2 text-gray-300">Opponent asks:</p>
@@ -1352,7 +1164,6 @@ export default function GuessWhoGame() {
                                 </div>
                             )}
                             
-                            {/* Ask question */}
                             {isMyTurn && (!lastQuestion || lastQuestion.answer) && (
                                 <div>
                                     <form onSubmit={askQuestion} className="mb-3">
@@ -1379,7 +1190,6 @@ export default function GuessWhoGame() {
                                 </div>
                             )}
                             
-                            {/* Waiting */}
                             {!isMyTurn && (!lastQuestion || lastQuestion.answer || lastQuestion.askerId === user?.uid) && (
                                 <div className="text-center text-gray-400">
                                     <p>Waiting for opponent...</p>
@@ -1387,7 +1197,6 @@ export default function GuessWhoGame() {
                             )}
                         </div>
 
-                        {/* Chat */}
                         <div className="bg-gray-800 p-4 rounded-lg h-64 flex flex-col">
                             <h2 className="text-lg font-bold mb-3">Chat</h2>
                             <div className="flex-1 overflow-y-auto mb-3 space-y-1">
