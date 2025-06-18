@@ -94,6 +94,11 @@ export default function GuessWhoGame() {
     const [showGuessModal, setShowGuessModal] = useState(false);
     const [showCharacterSelection, setShowCharacterSelection] = useState(false);
     const [selectedCharacter, setSelectedCharacter] = useState(null);
+    const [showDeckSelection, setShowDeckSelection] = useState(false);
+    const [deckType, setDeckType] = useState('standard'); // 'standard' or 'custom'
+    const [customCharacters, setCustomCharacters] = useState([]);
+    const [isCreatingCustomDeck, setIsCreatingCustomDeck] = useState(false);
+    const [customDeckProgress, setCustomDeckProgress] = useState(0);
 
     const chatEndRef = useRef(null);
 
@@ -302,10 +307,16 @@ export default function GuessWhoGame() {
         try {
             const gameRef = doc(db, 'games', newGameId);
 
+            // Use custom characters if available, otherwise use default
+            const gameCharacters = deckType === 'custom' && customCharacters.length === 24 
+                ? customCharacters 
+                : defaultCharacters;
+
             const initialData = {
                 id: newGameId,
                 hostId: user.uid,
-                characters: defaultCharacters,
+                deckType: deckType,
+                characters: gameCharacters,
                 players: {
                     [user.uid]: { 
                         id: user.uid, 
@@ -326,17 +337,18 @@ export default function GuessWhoGame() {
             await setDoc(gameRef, initialData);
             console.log("Game created successfully");
             
-            // Add initial chat message
             await updateDoc(gameRef, {
                 chat: arrayUnion({
                     userId: 'System',
-                    message: 'Game created. Waiting for another player...',
+                    message: `Game created with ${deckType} deck. Waiting for another player...`,
                     timestamp: new Date()
                 })
             });
 
             setGameId(newGameId);
             setGameState('waiting');
+            setShowDeckSelection(false);
+            setIsCreatingCustomDeck(false);
             
             if (typeof window !== 'undefined') {
                 window.history.pushState({}, '', `/play/${newGameId}`);
@@ -572,20 +584,94 @@ export default function GuessWhoGame() {
         );
     }
 
+    // Custom Character Creation Screen
+    if (isCreatingCustomDeck) {
+        return (
+            <div className="bg-gray-900 min-h-screen text-white p-4">
+                <div className="max-w-4xl mx-auto">
+                    <div className="text-center mb-6">
+                        <h1 className="text-3xl font-bold mb-2">Create Custom Character Deck</h1>
+                        <p className="text-gray-400">Add 24 unique characters with names and photos</p>
+                        <div className="bg-gray-800 rounded-full h-4 mt-4">
+                            <div 
+                                className="bg-purple-600 h-4 rounded-full transition-all duration-300"
+                                style={{width: `${(customDeckProgress / 24) * 100}%`}}
+                            ></div>
+                        </div>
+                        <p className="text-sm text-gray-400 mt-2">{customDeckProgress} / 24 characters added</p>
+                    </div>
+
+                    <CustomCharacterForm 
+                        customCharacters={customCharacters}
+                        setCustomCharacters={setCustomCharacters}
+                        setCustomDeckProgress={setCustomDeckProgress}
+                        onComplete={() => {
+                            setIsCreatingCustomDeck(false);
+                            createGame();
+                        }}
+                        onCancel={() => {
+                            setIsCreatingCustomDeck(false);
+                            setShowDeckSelection(false);
+                            setCustomCharacters([]);
+                            setCustomDeckProgress(0);
+                        }}
+                    />
+                </div>
+            </div>
+        );
+    }
+
     // Menu state
     if (gameState === 'menu') {
         return (
             <div className="bg-gray-900 min-h-screen flex flex-col items-center justify-center text-white p-4">
-                <div className="text-center">
+                <div className="text-center max-w-md w-full">
                     <h1 className="text-4xl font-bold mb-4 text-indigo-400">Guess Who? Online</h1>
                     <p className="text-lg text-gray-300 mb-8">Play the classic guessing game with a friend!</p>
-                    <button 
-                        onClick={createGame} 
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg text-xl transition-colors"
-                    >
-                        Create New Game
-                    </button>
+                    
+                    {!showDeckSelection ? (
+                        <button 
+                            onClick={() => setShowDeckSelection(true)} 
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg text-xl transition-colors"
+                        >
+                            Create New Game
+                        </button>
+                    ) : (
+                        <div className="space-y-4">
+                            <h2 className="text-xl font-bold mb-4">Choose Your Character Deck</h2>
+                            
+                            <button
+                                onClick={() => {
+                                    setDeckType('standard');
+                                    createGame();
+                                }}
+                                className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-colors mb-3"
+                            >
+                                🎲 Standard Deck
+                                <p className="text-sm text-green-200 mt-1">24 pre-made characters</p>
+                            </button>
+                            
+                            <button
+                                onClick={() => {
+                                    setDeckType('custom');
+                                    setIsCreatingCustomDeck(true);
+                                }}
+                                className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg transition-colors mb-3"
+                            >
+                                🎨 Custom Deck
+                                <p className="text-sm text-purple-200 mt-1">Create your own 24 characters</p>
+                            </button>
+                            
+                            <button
+                                onClick={() => setShowDeckSelection(false)}
+                                className="text-gray-400 hover:text-white underline"
+                            >
+                                Back
+                            </button>
+                        </div>
+                    )}
                 </div>
+                
                 <div className="mt-8 text-center text-gray-500">
                     <p>User ID: <span className="font-mono bg-gray-800 p-1 rounded text-xs">{user?.uid?.substring(0, 8)}...</span></p>
                 </div>
@@ -739,6 +825,189 @@ export default function GuessWhoGame() {
             </div>
         );
     }
+
+    // Custom Character Form Component
+    const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomDeckProgress, onComplete, onCancel }) => {
+        const [currentName, setCurrentName] = useState('');
+        const [currentImage, setCurrentImage] = useState(null);
+        const [previewUrl, setPreviewUrl] = useState('');
+        const [isUploading, setIsUploading] = useState(false);
+
+        const handleImageChange = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                if (file.size > 5 * 1024 * 1024) { // 5MB limit
+                    alert('Image must be smaller than 5MB');
+                    return;
+                }
+                
+                setCurrentImage(file);
+                const reader = new FileReader();
+                reader.onload = (e) => setPreviewUrl(e.target.result);
+                reader.readAsDataURL(file);
+            }
+        };
+
+        const uploadImageToCloudinary = async (file) => {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('upload_preset', 'guess-who'); // You'll need to create this
+            formData.append('cloud_name', 'your-cloudinary-name'); // Replace with your Cloudinary name
+
+            try {
+                const response = await fetch('https://api.cloudinary.com/v1_1/your-cloudinary-name/image/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                return data.secure_url;
+            } catch (error) {
+                console.error('Upload failed:', error);
+                throw error;
+            }
+        };
+
+        const addCharacter = async () => {
+            if (!currentName.trim() || !currentImage) {
+                alert('Please enter a name and select an image');
+                return;
+            }
+
+            if (customCharacters.find(c => c.name.toLowerCase() === currentName.trim().toLowerCase())) {
+                alert('Character name already exists');
+                return;
+            }
+
+            setIsUploading(true);
+            try {
+                // For now, use base64 data URL (you can switch to Cloudinary later)
+                const imageUrl = previewUrl;
+                
+                const newCharacter = {
+                    id: customCharacters.length + 1,
+                    name: currentName.trim(),
+                    image: imageUrl
+                };
+
+                const updatedCharacters = [...customCharacters, newCharacter];
+                setCustomCharacters(updatedCharacters);
+                setCustomDeckProgress(updatedCharacters.length);
+
+                // Reset form
+                setCurrentName('');
+                setCurrentImage(null);
+                setPreviewUrl('');
+                
+                // Auto-complete when 24 characters are added
+                if (updatedCharacters.length === 24) {
+                    setTimeout(() => onComplete(), 500);
+                }
+            } catch (error) {
+                alert('Failed to add character. Please try again.');
+            } finally {
+                setIsUploading(false);
+            }
+        };
+
+        const removeCharacter = (id) => {
+            const updatedCharacters = customCharacters.filter(c => c.id !== id);
+            setCustomCharacters(updatedCharacters);
+            setCustomDeckProgress(updatedCharacters.length);
+        };
+
+        return (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Add Character Form */}
+                <div className="bg-gray-800 p-6 rounded-lg">
+                    <h3 className="text-xl font-bold mb-4">Add New Character</h3>
+                    
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium mb-2">Character Name</label>
+                            <input
+                                type="text"
+                                value={currentName}
+                                onChange={(e) => setCurrentName(e.target.value)}
+                                className="w-full bg-gray-700 text-white p-3 rounded border border-gray-600 focus:border-purple-500 focus:outline-none"
+                                placeholder="Enter character name"
+                                maxLength={20}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium mb-2">Character Photo</label>
+                            <input
+                                type="file"
+                                accept="image/*"
+                                onChange={handleImageChange}
+                                className="w-full bg-gray-700 text-white p-3 rounded border border-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-purple-600 file:text-white hover:file:bg-purple-700"
+                            />
+                            <p className="text-xs text-gray-400 mt-1">Max size: 5MB. Recommended: Square images</p>
+                        </div>
+
+                        {previewUrl && (
+                            <div className="text-center">
+                                <img src={previewUrl} alt="Preview" className="w-32 h-32 object-cover rounded mx-auto" />
+                            </div>
+                        )}
+
+                        <button
+                            onClick={addCharacter}
+                            disabled={isUploading || !currentName.trim() || !currentImage}
+                            className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded transition-colors"
+                        >
+                            {isUploading ? 'Adding...' : 'Add Character'}
+                        </button>
+                    </div>
+
+                    <div className="mt-6 flex gap-3">
+                        <button
+                            onClick={onCancel}
+                            className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded"
+                        >
+                            Cancel
+                        </button>
+                        
+                        {customCharacters.length === 24 && (
+                            <button
+                                onClick={onComplete}
+                                className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+                            >
+                                Create Game
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* Character Grid */}
+                <div className="bg-gray-800 p-6 rounded-lg">
+                    <h3 className="text-xl font-bold mb-4">Your Characters ({customCharacters.length}/24)</h3>
+                    
+                    <div className="grid grid-cols-3 gap-3 max-h-96 overflow-y-auto">
+                        {customCharacters.map(char => (
+                            <div key={char.id} className="relative group">
+                                <img src={char.image} alt={char.name} className="w-full h-20 object-cover rounded" />
+                                <p className="text-xs text-center mt-1 truncate">{char.name}</p>
+                                <button
+                                    onClick={() => removeCharacter(char.id)}
+                                    className="absolute -top-2 -right-2 bg-red-600 hover:bg-red-700 text-white rounded-full w-6 h-6 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        ))}
+                        
+                        {/* Empty slots */}
+                        {Array.from({length: 24 - customCharacters.length}).map((_, i) => (
+                            <div key={`empty-${i}`} className="w-full h-20 bg-gray-700 rounded border-2 border-dashed border-gray-600 flex items-center justify-center">
+                                <span className="text-gray-500 text-xs">Empty</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    };
 
     // Main game view
     if (gameState === 'playing' && gameData) {
