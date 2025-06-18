@@ -504,15 +504,20 @@ export default function GuessWhoGame() {
             const gameRef = doc(db, 'games', newGameId);
 
             // Use custom characters if available, otherwise use default
-            const gameCharacters = deckType === 'custom' && customCharacters.length === 24 
+            const gameCharacters = deckType === 'custom' && customCharacters.length >= 1 
                 ? customCharacters 
                 : defaultCharacters;
+
+            console.log('Creating game with characters:', gameCharacters); // Debug log
+            console.log('Deck type:', deckType); // Debug log
+            console.log('Custom characters length:', customCharacters.length); // Debug log
 
             const initialData = {
                 id: newGameId,
                 hostId: user.uid,
                 deckType: deckType,
                 characters: gameCharacters,
+                characterCount: gameCharacters.length,
                 players: {
                     [user.uid]: { 
                         id: user.uid, 
@@ -531,12 +536,12 @@ export default function GuessWhoGame() {
             };
 
             await setDoc(gameRef, initialData);
-            console.log("Game created successfully");
+            console.log("Game created successfully with data:", initialData);
             
             await updateDoc(gameRef, {
                 chat: arrayUnion({
                     userId: 'System',
-                    message: `Game created with ${deckType} deck. Waiting for another player...`,
+                    message: `Game created with ${deckType} deck (${gameCharacters.length} characters). Waiting for another player...`,
                     timestamp: new Date()
                 })
             });
@@ -782,21 +787,26 @@ export default function GuessWhoGame() {
         );
     }
 
-    // Custom Character Creation Screen
+    // Custom Character Creation Screen - UPDATED HEADER
     if (isCreatingCustomDeck) {
         return (
             <div className="bg-gray-900 min-h-screen text-white p-4">
                 <div className="max-w-4xl mx-auto">
                     <div className="text-center mb-6">
                         <h1 className="text-3xl font-bold mb-2">Create Custom Character Deck</h1>
-                        <p className="text-gray-400">Add 24 unique characters with names and photos</p>
+                        <p className="text-gray-400">Add 1-24 unique characters with names and photos</p>
                         <div className="bg-gray-800 rounded-full h-4 mt-4">
                             <div 
                                 className="bg-purple-600 h-4 rounded-full transition-all duration-300"
                                 style={{width: `${(customDeckProgress / 24) * 100}%`}}
                             ></div>
                         </div>
-                        <p className="text-sm text-gray-400 mt-2">{customDeckProgress} / 24 characters added</p>
+                        <p className="text-sm text-gray-400 mt-2">
+                            {customDeckProgress} character{customDeckProgress !== 1 ? 's' : ''} added 
+                            <span className="text-purple-400 ml-2">
+                                (Minimum: 1, Maximum: 24)
+                            </span>
+                        </p>
                     </div>
 
                     <CustomCharacterForm 
@@ -857,7 +867,7 @@ export default function GuessWhoGame() {
                                 className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg transition-colors mb-3"
                             >
                                 🎨 Custom Deck
-                                <p className="text-sm text-purple-200 mt-1">Create your own 24 characters</p>
+                                <p className="text-sm text-purple-200 mt-1">Create your own characters(1-24)</p>
                             </button>
                             
                             <button
@@ -877,24 +887,42 @@ export default function GuessWhoGame() {
         );
     }
 
-    // Character Selection Modal
+    // Character Selection Modal - FIXED VERSION
     if (showCharacterSelection || (gameData?.gameState?.status === 'character-selection' && !me?.hasSelectedCharacter)) {
+        // Use the characters from gameData, which should contain custom characters
+        const availableCharacters = gameData?.characters || defaultCharacters;
+        
+        console.log('Character selection - available characters:', availableCharacters); // Debug log
+        console.log('Game deck type:', gameData?.deckType); // Debug log
+        
         return (
             <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white p-4">
                 <div className="bg-gray-800 p-6 rounded-lg max-w-4xl w-full">
                     <h2 className="text-2xl font-bold mb-4 text-center">Choose Your Secret Character</h2>
-                    <p className="text-center text-gray-400 mb-6">
+                    <p className="text-center text-gray-400 mb-2">
                         Select the character your opponent will try to guess:
+                    </p>
+                    <p className="text-center text-sm text-purple-400 mb-6">
+                        Using {gameData?.deckType === 'custom' ? 'Custom' : 'Standard'} deck 
+                        ({availableCharacters.length} characters)
                     </p>
                     
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 max-h-96 overflow-y-auto">
-                        {gameData?.characters?.map(char => (
+                        {availableCharacters.map(char => (
                             <div
                                 key={char.id}
                                 onClick={() => selectCharacter(char)}
                                 className="cursor-pointer hover:bg-gray-700 p-2 rounded transition-all hover:scale-105 border-2 border-transparent hover:border-indigo-500"
                             >
-                                <img src={char.image} alt={char.name} className="w-full rounded mb-1" />
+                                <img 
+                                    src={char.image} 
+                                    alt={char.name} 
+                                    className="w-full rounded mb-1"
+                                    onError={(e) => {
+                                        console.error('Image failed to load:', char.image);
+                                        e.target.src = 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + char.name;
+                                    }}
+                                />
                                 <p className="text-xs text-center">{char.name}</p>
                             </div>
                         ))}
@@ -903,6 +931,15 @@ export default function GuessWhoGame() {
                     <div className="mt-4 text-center text-sm text-gray-500">
                         Click on a character to select them as your secret character
                     </div>
+                    
+                    {/* Debug info - remove after testing */}
+                    {process.env.NODE_ENV === 'development' && (
+                        <div className="mt-4 p-2 bg-gray-700 rounded text-xs">
+                            <p>Debug: Deck type: {gameData?.deckType}</p>
+                            <p>Debug: Character count: {availableCharacters.length}</p>
+                            <p>Debug: Custom characters: {customCharacters.length}</p>
+                        </div>
+                    )}
                 </div>
             </div>
         );
