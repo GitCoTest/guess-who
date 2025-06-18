@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/router';
+import { useState, useRef } from 'react';
 
 // Import Firebase at top level
 import { initializeApp } from 'firebase/app';
@@ -78,12 +79,17 @@ const GameModal = ({ title, children, onClose }) => (
     </div>
 );
 
-// Custom Character Form Component - UPDATED VERSION
+// Custom Character Form Component - WITH IMAGE CROPPING
 const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomDeckProgress, onComplete, onCancel }) => {
     const [currentName, setCurrentName] = useState('');
-    const [currentImage, setCurrentImage] = useState(null);
+    const [selectedFile, setSelectedFile] = useState(null);
     const [previewUrl, setPreviewUrl] = useState('');
+    const [showCropper, setShowCropper] = useState(false);
+    const [croppedImageUrl, setCroppedImageUrl] = useState('');
     const [isUploading, setIsUploading] = useState(false);
+    
+    const fileInputRef = useRef(null);
+    const canvasRef = useRef(null);
 
     const handleImageChange = (e) => {
         const file = e.target.files[0];
@@ -93,15 +99,66 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
                 return;
             }
             
-            setCurrentImage(file);
+            setSelectedFile(file);
             const reader = new FileReader();
-            reader.onload = (e) => setPreviewUrl(e.target.result);
+            reader.onload = (e) => {
+                setPreviewUrl(e.target.result);
+                setShowCropper(true);
+            };
             reader.readAsDataURL(file);
         }
     };
 
+    const cropToSquare = (imageUrl) => {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Determine the size for square crop (use smaller dimension)
+                const size = Math.min(img.width, img.height);
+                canvas.width = 300; // Output size
+                canvas.height = 300; // Output size
+                
+                // Calculate crop position (center)
+                const startX = (img.width - size) / 2;
+                const startY = (img.height - size) / 2;
+                
+                // Draw cropped image
+                ctx.drawImage(
+                    img,
+                    startX, startY, size, size, // source
+                    0, 0, 300, 300 // destination
+                );
+                
+                resolve(canvas.toDataURL('image/jpeg', 0.8));
+            };
+            img.src = imageUrl;
+        });
+    };
+
+    const handleCropConfirm = async () => {
+        try {
+            const croppedUrl = await cropToSquare(previewUrl);
+            setCroppedImageUrl(croppedUrl);
+            setShowCropper(false);
+        } catch (error) {
+            console.error('Cropping failed:', error);
+            alert('Failed to crop image. Please try again.');
+        }
+    };
+
+    const handleCropCancel = () => {
+        setShowCropper(false);
+        setPreviewUrl('');
+        setSelectedFile(null);
+        setCroppedImageUrl('');
+        fileInputRef.current.value = '';
+    };
+
     const addCharacter = async () => {
-        if (!currentName.trim() || !currentImage) {
+        if (!currentName.trim() || !croppedImageUrl) {
             alert('Please enter a name and select an image');
             return;
         }
@@ -118,13 +175,10 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
 
         setIsUploading(true);
         try {
-            // Use base64 data URL (works without external services)
-            const imageUrl = previewUrl;
-            
             const newCharacter = {
                 id: customCharacters.length + 1,
                 name: currentName.trim(),
-                image: imageUrl
+                image: croppedImageUrl
             };
 
             const updatedCharacters = [...customCharacters, newCharacter];
@@ -133,8 +187,12 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
 
             // Reset form
             setCurrentName('');
-            setCurrentImage(null);
+            setSelectedFile(null);
             setPreviewUrl('');
+            setCroppedImageUrl('');
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
             
         } catch (error) {
             alert('Failed to add character. Please try again.');
@@ -145,7 +203,6 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
 
     const removeCharacter = (id) => {
         const updatedCharacters = customCharacters.filter(c => c.id !== id);
-        // Re-index the remaining characters
         const reindexedCharacters = updatedCharacters.map((char, index) => ({
             ...char,
             id: index + 1
@@ -154,12 +211,49 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
         setCustomDeckProgress(reindexedCharacters.length);
     };
 
-    // Calculate if we can create the game (minimum 1 character)
     const canCreateGame = customCharacters.length >= 1;
     const remainingSlots = 24 - customCharacters.length;
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Cropper Modal */}
+            {showCropper && (
+                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+                    <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+                        <h3 className="text-xl font-bold mb-4 text-center text-white">Crop Image to Square</h3>
+                        
+                        <div className="text-center mb-4">
+                            <div className="relative inline-block">
+                                <img 
+                                    src={previewUrl} 
+                                    alt="Crop preview" 
+                                    className="max-w-full max-h-64 rounded"
+                                />
+                                <div className="absolute inset-0 border-4 border-dashed border-purple-500 rounded"></div>
+                            </div>
+                            <p className="text-sm text-gray-400 mt-2">
+                                Image will be automatically cropped to a square (1:1 ratio)
+                            </p>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={handleCropCancel}
+                                className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleCropConfirm}
+                                className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded"
+                            >
+                                Crop & Use
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Add Character Form */}
             <div className="bg-gray-800 p-6 rounded-lg">
                 <h3 className="text-xl font-bold mb-4">Add New Character</h3>
@@ -180,23 +274,27 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
                     <div>
                         <label className="block text-sm font-medium mb-2">Character Photo</label>
                         <input
+                            ref={fileInputRef}
                             type="file"
                             accept="image/*"
                             onChange={handleImageChange}
                             className="w-full bg-gray-700 text-white p-3 rounded border border-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-purple-600 file:text-white hover:file:bg-purple-700"
                         />
-                        <p className="text-xs text-gray-400 mt-1">Max size: 5MB. Recommended: Square images</p>
+                        <p className="text-xs text-gray-400 mt-1">
+                            📐 Max size: 5MB. Images will be automatically cropped to square (1:1 ratio)
+                        </p>
                     </div>
 
-                    {previewUrl && (
+                    {croppedImageUrl && (
                         <div className="text-center">
-                            <img src={previewUrl} alt="Preview" className="w-32 h-32 object-cover rounded mx-auto" />
+                            <p className="text-sm text-green-400 mb-2">✅ Image cropped and ready!</p>
+                            <img src={croppedImageUrl} alt="Cropped preview" className="w-32 h-32 object-cover rounded mx-auto border-2 border-purple-500" />
                         </div>
                     )}
 
                     <button
                         onClick={addCharacter}
-                        disabled={isUploading || !currentName.trim() || !currentImage || customCharacters.length >= 24}
+                        disabled={isUploading || !currentName.trim() || !croppedImageUrl || customCharacters.length >= 24}
                         className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded transition-colors"
                     >
                         {isUploading ? 'Adding...' : customCharacters.length >= 24 ? 'Maximum Reached' : 'Add Character'}
@@ -236,11 +334,12 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
             {/* Character Grid */}
             <div className="bg-gray-800 p-6 rounded-lg">
                 <h3 className="text-xl font-bold mb-4">Your Characters ({customCharacters.length}/24)</h3>
+                <p className="text-sm text-gray-400 mb-4">📐 All images are automatically cropped to perfect squares</p>
                 
                 <div className="grid grid-cols-3 gap-3 max-h-96 overflow-y-auto">
                     {customCharacters.map(char => (
                         <div key={char.id} className="relative group">
-                            <img src={char.image} alt={char.name} className="w-full h-20 object-cover rounded" />
+                            <img src={char.image} alt={char.name} className="w-full h-20 object-cover rounded border border-gray-600" />
                             <p className="text-xs text-center mt-1 truncate">{char.name}</p>
                             <button
                                 onClick={() => removeCharacter(char.id)}
@@ -251,7 +350,7 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
                         </div>
                     ))}
                     
-                    {/* Empty slots - only show remaining available slots */}
+                    {/* Empty slots */}
                     {Array.from({length: Math.min(remainingSlots, 12)}).map((_, i) => (
                         <div key={`empty-${i}`} className="w-full h-20 bg-gray-700 rounded border-2 border-dashed border-gray-600 flex items-center justify-center">
                             <span className="text-gray-500 text-xs">Empty</span>
@@ -262,8 +361,7 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
                 {customCharacters.length > 0 && (
                     <div className="mt-4 p-3 bg-blue-900/30 rounded border border-blue-600">
                         <p className="text-blue-300 text-sm text-center">
-                            💡 <strong>Tip:</strong> You can create a game with {customCharacters.length} character{customCharacters.length !== 1 ? 's' : ''}, 
-                            or add more (up to 24 total)
+                            💡 <strong>Perfect!</strong> All {customCharacters.length} character{customCharacters.length !== 1 ? 's' : ''} are cropped to square format
                         </p>
                     </div>
                 )}
@@ -271,6 +369,7 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
         </div>
     );
 };
+
 // MAIN COMPONENT
 export default function GuessWhoGame() {
     const router = useRouter();
@@ -594,27 +693,53 @@ export default function GuessWhoGame() {
     };
 
     const selectCharacter = async (character) => {
-        if (!gameId || !user || !db) return;
-
+        if (!gameId || !user || !db || !character) {
+            console.error('Missing requirements for character selection:', { gameId, user: !!user, db: !!db, character });
+            return;
+        }
+    
+        // Prevent double-clicks
+        if (isSelectingCharacter) {
+            console.log('Already selecting a character, ignoring click');
+            return;
+        }
+    
         try {
-            console.log('Attempting to select character:', character.name);
+            setIsSelectingCharacter(true);
+            console.log('Attempting to select character:', character.name, 'for user:', user.uid);
+            
             const gameRef = doc(db, 'games', gameId);
             
-            await updateDoc(gameRef, {
-                [`players.${user.uid}.secretCharacter`]: character,
+            // Create the update object
+            const updateData = {
+                [`players.${user.uid}.secretCharacter`]: {
+                    id: character.id,
+                    name: character.name,
+                    image: character.image
+                },
                 [`players.${user.uid}.hasSelectedCharacter`]: true,
                 chat: arrayUnion({
                     userId: 'System',
                     message: `${me?.name || 'Player'} has chosen their secret character.`,
                     timestamp: new Date()
                 })
-            });
+            };
             
+            console.log('Updating Firebase with:', updateData);
+            
+            await updateDoc(gameRef, updateData);
+            
+            // Update local state
             setSelectedCharacter(character);
             setShowCharacterSelection(false);
-            console.log("Character selected:", character.name);
+            
+            console.log("✅ Character selected successfully:", character.name);
+            
         } catch (error) {
-            console.error("Error selecting character:", error);
+            console.error("❌ Error selecting character:", error);
+            alert(`Failed to select character: ${error.message}`);
+        } finally {
+            setIsSelectingCharacter(false);
         }
     };
 
@@ -887,13 +1012,12 @@ export default function GuessWhoGame() {
         );
     }
 
-    // Character Selection Modal - FIXED VERSION
+    // Character Selection Modal - IMPROVED VERSION
     if (showCharacterSelection || (gameData?.gameState?.status === 'character-selection' && !me?.hasSelectedCharacter)) {
-        // Use the characters from gameData, which should contain custom characters
         const availableCharacters = gameData?.characters || defaultCharacters;
         
-        console.log('Character selection - available characters:', availableCharacters); // Debug log
-        console.log('Game deck type:', gameData?.deckType); // Debug log
+        console.log('Character selection screen - available characters:', availableCharacters.length);
+        console.log('Current user has selected character:', me?.hasSelectedCharacter);
         
         return (
             <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white p-4">
@@ -907,39 +1031,69 @@ export default function GuessWhoGame() {
                         ({availableCharacters.length} characters)
                     </p>
                     
-                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 max-h-96 overflow-y-auto">
-                        {availableCharacters.map(char => (
-                            <div
-                                key={char.id}
-                                onClick={() => selectCharacter(char)}
-                                className="cursor-pointer hover:bg-gray-700 p-2 rounded transition-all hover:scale-105 border-2 border-transparent hover:border-indigo-500"
+                    {availableCharacters.length === 0 ? (
+                        <div className="text-center text-red-400 p-8">
+                            <p>No characters available! Something went wrong.</p>
+                            <button 
+                                onClick={() => window.location.reload()}
+                                className="mt-4 bg-red-600 hover:bg-red-700 px-4 py-2 rounded"
                             >
-                                <img 
-                                    src={char.image} 
-                                    alt={char.name} 
-                                    className="w-full rounded mb-1"
-                                    onError={(e) => {
-                                        console.error('Image failed to load:', char.image);
-                                        e.target.src = 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + char.name;
-                                    }}
-                                />
-                                <p className="text-xs text-center">{char.name}</p>
-                            </div>
-                        ))}
-                    </div>
-                    
-                    <div className="mt-4 text-center text-sm text-gray-500">
-                        Click on a character to select them as your secret character
-                    </div>
-                    
-                    {/* Debug info - remove after testing */}
-                    {process.env.NODE_ENV === 'development' && (
-                        <div className="mt-4 p-2 bg-gray-700 rounded text-xs">
-                            <p>Debug: Deck type: {gameData?.deckType}</p>
-                            <p>Debug: Character count: {availableCharacters.length}</p>
-                            <p>Debug: Custom characters: {customCharacters.length}</p>
+                                Reload Page
+                            </button>
                         </div>
+                    ) : (
+                        <>
+                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 max-h-96 overflow-y-auto">
+                                {availableCharacters.map(char => (
+                                    <div
+                                        key={`char-${char.id}`}
+                                        onClick={() => {
+                                            console.log('Character clicked:', char.name);
+                                            selectCharacter(char);
+                                        }}
+                                        className="cursor-pointer hover:bg-gray-700 p-2 rounded transition-all hover:scale-105 border-2 border-transparent hover:border-indigo-500 active:border-green-500"
+                                    >
+                                        <img 
+                                            src={char.image} 
+                                            alt={char.name} 
+                                            className="w-full rounded mb-1"
+                                            onError={(e) => {
+                                                console.error('Image failed to load:', char.image);
+                                                // Fallback to DiceBear if custom image fails
+                                                e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(char.name)}`;
+                                            }}
+                                            onLoad={() => {
+                                                console.log('Image loaded successfully:', char.name);
+                                            }}
+                                        />
+                                        <p className="text-xs text-center font-medium">{char.name}</p>
+                                    </div>
+                                ))}
+                            </div>
+                            
+                            <div className="mt-4 text-center text-sm text-gray-500">
+                                Click on a character to select them as your secret character
+                            </div>
+                            
+                            {/* Loading indicator */}
+                            {isUploading && (
+                                <div className="mt-4 text-center">
+                                    <div className="inline-flex items-center text-indigo-400">
+                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-400 mr-2"></div>
+                                        Selecting character...
+                                    </div>
+                                </div>
+                            )}
+                        </>
                     )}
+                    
+                    {/* Debug info */}
+                    <div className="mt-4 p-2 bg-gray-700 rounded text-xs opacity-50">
+                        <p>Debug - User ID: {user?.uid?.substring(0, 8)}...</p>
+                        <p>Debug - Game ID: {gameId}</p>
+                        <p>Debug - Has selected: {me?.hasSelectedCharacter ? 'Yes' : 'No'}</p>
+                        <p>Debug - Available characters: {availableCharacters.length}</p>
+                    </div>
                 </div>
             </div>
         );
@@ -1077,38 +1231,43 @@ export default function GuessWhoGame() {
 
                 <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-4">
                     {/* Character Board */}
-                    <div className="lg:col-span-2">
-                        <div className="bg-gray-800 p-4 rounded-lg">
-                            <h2 className="text-lg font-bold mb-4">
-                                Characters - Click to eliminate 
-                                <span className="text-sm text-gray-400 ml-2">
-                                    ({gameData?.deckType === 'custom' ? 'Custom' : 'Standard'} deck)
-                                </span>
-                            </h2>
-                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-                                {gameData.characters.map(char => {
-                                    const isEliminated = eliminatedChars.has(char.id);
-                                    return (
-                                        <div 
-                                            key={char.id} 
-                                            onClick={() => toggleEliminated(char.id)}
-                                            className={`cursor-pointer rounded overflow-hidden transition-all ${
-                                                isEliminated ? 'opacity-30 grayscale' : 'hover:scale-105'
-                                            }`}
-                                        >
-                                            <img src={char.image} alt={char.name} className="w-full" />
-                                            <p className={`text-xs text-center p-1 ${
-                                                isEliminated ? 'bg-red-900' : 'bg-gray-700'
-                                            }`}>
-                                                {char.name}
-                                            </p>
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                    <div className="bg-gray-800 p-4 rounded-lg">
+                        <h2 className="text-lg font-bold mb-4">
+                            Characters - Click to eliminate 
+                            <span className="text-sm text-gray-400 ml-2">
+                                ({gameData?.deckType === 'custom' ? 'Custom' : 'Standard'} deck - {gameData?.characters?.length} total)
+                            </span>
+                        </h2>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                            {gameData.characters.map(char => {
+                                const isEliminated = eliminatedChars.has(char.id);
+                                return (
+                                    <div 
+                                        key={char.id} 
+                                        onClick={() => toggleEliminated(char.id)}
+                                        className={`cursor-pointer rounded overflow-hidden transition-all ${
+                                            isEliminated ? 'opacity-30 grayscale' : 'hover:scale-105'
+                                        }`}
+                                    >
+                                        <img 
+                                            src={char.image} 
+                                            alt={char.name} 
+                                            className="w-full"
+                                            onError={(e) => {
+                                                console.error('Image failed to load:', char.image);
+                                                e.target.src = 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + char.name;
+                                            }}
+                                        />
+                                        <p className={`text-xs text-center p-1 ${
+                                            isEliminated ? 'bg-red-900' : 'bg-gray-700'
+                                        }`}>
+                                            {char.name}
+                                        </p>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
-
                     {/* Side Panel */}
                     <div className="space-y-4">
                         {/* Game Info */}
