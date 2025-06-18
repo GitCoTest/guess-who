@@ -78,7 +78,7 @@ const GameModal = ({ title, children, onClose }) => (
     </div>
 );
 
-// Custom Character Form Component
+// Custom Character Form Component - UPDATED VERSION
 const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomDeckProgress, onComplete, onCancel }) => {
     const [currentName, setCurrentName] = useState('');
     const [currentImage, setCurrentImage] = useState(null);
@@ -111,6 +111,11 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
             return;
         }
 
+        if (customCharacters.length >= 24) {
+            alert('Maximum 24 characters allowed');
+            return;
+        }
+
         setIsUploading(true);
         try {
             // Use base64 data URL (works without external services)
@@ -131,10 +136,6 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
             setCurrentImage(null);
             setPreviewUrl('');
             
-            // Auto-complete when 24 characters are added
-            if (updatedCharacters.length === 24) {
-                setTimeout(() => onComplete(), 500);
-            }
         } catch (error) {
             alert('Failed to add character. Please try again.');
         } finally {
@@ -152,6 +153,10 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
         setCustomCharacters(reindexedCharacters);
         setCustomDeckProgress(reindexedCharacters.length);
     };
+
+    // Calculate if we can create the game (minimum 1 character)
+    const canCreateGame = customCharacters.length >= 1;
+    const remainingSlots = 24 - customCharacters.length;
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -191,11 +196,17 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
 
                     <button
                         onClick={addCharacter}
-                        disabled={isUploading || !currentName.trim() || !currentImage}
+                        disabled={isUploading || !currentName.trim() || !currentImage || customCharacters.length >= 24}
                         className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded transition-colors"
                     >
-                        {isUploading ? 'Adding...' : 'Add Character'}
+                        {isUploading ? 'Adding...' : customCharacters.length >= 24 ? 'Maximum Reached' : 'Add Character'}
                     </button>
+
+                    {remainingSlots > 0 && (
+                        <p className="text-sm text-gray-400 text-center">
+                            {remainingSlots} more character{remainingSlots !== 1 ? 's' : ''} can be added
+                        </p>
+                    )}
                 </div>
 
                 <div className="mt-6 flex gap-3">
@@ -206,15 +217,20 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
                         Cancel
                     </button>
                     
-                    {customCharacters.length === 24 && (
-                        <button
-                            onClick={onComplete}
-                            className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
-                        >
-                            Create Game
-                        </button>
-                    )}
+                    <button
+                        onClick={onComplete}
+                        disabled={!canCreateGame}
+                        className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded"
+                    >
+                        {canCreateGame ? 'Create Game' : 'Add Characters'}
+                    </button>
                 </div>
+
+                {!canCreateGame && (
+                    <p className="text-sm text-red-400 text-center mt-2">
+                        Add at least 1 character to create the game
+                    </p>
+                )}
             </div>
 
             {/* Character Grid */}
@@ -235,18 +251,26 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
                         </div>
                     ))}
                     
-                    {/* Empty slots */}
-                    {Array.from({length: 24 - customCharacters.length}).map((_, i) => (
+                    {/* Empty slots - only show remaining available slots */}
+                    {Array.from({length: Math.min(remainingSlots, 12)}).map((_, i) => (
                         <div key={`empty-${i}`} className="w-full h-20 bg-gray-700 rounded border-2 border-dashed border-gray-600 flex items-center justify-center">
                             <span className="text-gray-500 text-xs">Empty</span>
                         </div>
                     ))}
                 </div>
+
+                {customCharacters.length > 0 && (
+                    <div className="mt-4 p-3 bg-blue-900/30 rounded border border-blue-600">
+                        <p className="text-blue-300 text-sm text-center">
+                            💡 <strong>Tip:</strong> You can create a game with {customCharacters.length} character{customCharacters.length !== 1 ? 's' : ''}, 
+                            or add more (up to 24 total)
+                        </p>
+                    </div>
+                )}
             </div>
         </div>
     );
 };
-
 // MAIN COMPONENT
 export default function GuessWhoGame() {
     const router = useRouter();
