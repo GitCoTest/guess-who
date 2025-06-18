@@ -79,7 +79,7 @@ const GameModal = ({ title, children, onClose }) => (
     </div>
 );
 
-// Custom Character Form Component - WITH IMAGE CROPPING
+// Custom Character Form Component - BUILD-SAFE VERSION
 const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomDeckProgress, onComplete, onCancel }) => {
     const [currentName, setCurrentName] = useState('');
     const [selectedFile, setSelectedFile] = useState(null);
@@ -89,13 +89,17 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
     const [isUploading, setIsUploading] = useState(false);
     
     const fileInputRef = useRef(null);
-    const canvasRef = useRef(null);
 
     const handleImageChange = (e) => {
         const file = e.target.files[0];
         if (file) {
             if (file.size > 5 * 1024 * 1024) { // 5MB limit
                 alert('Image must be smaller than 5MB');
+                return;
+            }
+            
+            if (!file.type.startsWith('image/')) {
+                alert('Please select an image file');
                 return;
             }
             
@@ -110,42 +114,54 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
     };
 
     const cropToSquare = (imageUrl) => {
-        return new Promise((resolve) => {
-            const img = new Image();
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                
-                // Determine the size for square crop (use smaller dimension)
-                const size = Math.min(img.width, img.height);
-                canvas.width = 300; // Output size
-                canvas.height = 300; // Output size
-                
-                // Calculate crop position (center)
-                const startX = (img.width - size) / 2;
-                const startY = (img.height - size) / 2;
-                
-                // Draw cropped image
-                ctx.drawImage(
-                    img,
-                    startX, startY, size, size, // source
-                    0, 0, 300, 300 // destination
-                );
-                
-                resolve(canvas.toDataURL('image/jpeg', 0.8));
-            };
-            img.src = imageUrl;
+        return new Promise((resolve, reject) => {
+            try {
+                const img = new Image();
+                img.onload = () => {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        
+                        // Determine the size for square crop (use smaller dimension)
+                        const size = Math.min(img.width, img.height);
+                        canvas.width = 300; // Output size
+                        canvas.height = 300; // Output size
+                        
+                        // Calculate crop position (center)
+                        const startX = (img.width - size) / 2;
+                        const startY = (img.height - size) / 2;
+                        
+                        // Draw cropped image
+                        ctx.drawImage(
+                            img,
+                            startX, startY, size, size, // source
+                            0, 0, 300, 300 // destination
+                        );
+                        
+                        resolve(canvas.toDataURL('image/jpeg', 0.8));
+                    } catch (canvasError) {
+                        reject(canvasError);
+                    }
+                };
+                img.onerror = () => reject(new Error('Failed to load image'));
+                img.src = imageUrl;
+            } catch (error) {
+                reject(error);
+            }
         });
     };
 
     const handleCropConfirm = async () => {
         try {
+            setIsUploading(true);
             const croppedUrl = await cropToSquare(previewUrl);
             setCroppedImageUrl(croppedUrl);
             setShowCropper(false);
         } catch (error) {
             console.error('Cropping failed:', error);
             alert('Failed to crop image. Please try again.');
+        } finally {
+            setIsUploading(false);
         }
     };
 
@@ -154,12 +170,19 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
         setPreviewUrl('');
         setSelectedFile(null);
         setCroppedImageUrl('');
-        fileInputRef.current.value = '';
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
     };
 
     const addCharacter = async () => {
-        if (!currentName.trim() || !croppedImageUrl) {
-            alert('Please enter a name and select an image');
+        if (!currentName.trim()) {
+            alert('Please enter a character name');
+            return;
+        }
+
+        if (!croppedImageUrl) {
+            alert('Please select and crop an image');
             return;
         }
 
@@ -195,6 +218,7 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
             }
             
         } catch (error) {
+            console.error('Error adding character:', error);
             alert('Failed to add character. Please try again.');
         } finally {
             setIsUploading(false);
@@ -229,25 +253,27 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
                                     alt="Crop preview" 
                                     className="max-w-full max-h-64 rounded"
                                 />
-                                <div className="absolute inset-0 border-4 border-dashed border-purple-500 rounded"></div>
+                                <div className="absolute inset-0 border-4 border-dashed border-purple-500 rounded opacity-50"></div>
                             </div>
                             <p className="text-sm text-gray-400 mt-2">
-                                Image will be automatically cropped to a square (1:1 ratio)
+                                Image will be automatically cropped to a perfect square
                             </p>
                         </div>
 
                         <div className="flex gap-3">
                             <button
                                 onClick={handleCropCancel}
-                                className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded"
+                                disabled={isUploading}
+                                className="flex-1 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-700 text-white font-bold py-2 px-4 rounded"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleCropConfirm}
-                                className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded"
+                                disabled={isUploading}
+                                className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-700 text-white font-bold py-2 px-4 rounded"
                             >
-                                Crop & Use
+                                {isUploading ? 'Processing...' : 'Crop & Use'}
                             </button>
                         </div>
                     </div>
@@ -288,7 +314,11 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
                     {croppedImageUrl && (
                         <div className="text-center">
                             <p className="text-sm text-green-400 mb-2">✅ Image cropped and ready!</p>
-                            <img src={croppedImageUrl} alt="Cropped preview" className="w-32 h-32 object-cover rounded mx-auto border-2 border-purple-500" />
+                            <img 
+                                src={croppedImageUrl} 
+                                alt="Cropped preview" 
+                                className="w-32 h-32 object-cover rounded mx-auto border-2 border-purple-500" 
+                            />
                         </div>
                     )}
 
@@ -339,7 +369,11 @@ const CustomCharacterForm = ({ customCharacters, setCustomCharacters, setCustomD
                 <div className="grid grid-cols-3 gap-3 max-h-96 overflow-y-auto">
                     {customCharacters.map(char => (
                         <div key={char.id} className="relative group">
-                            <img src={char.image} alt={char.name} className="w-full h-20 object-cover rounded border border-gray-600" />
+                            <img 
+                                src={char.image} 
+                                alt={char.name} 
+                                className="w-full h-20 object-cover rounded border border-gray-600" 
+                            />
                             <p className="text-xs text-center mt-1 truncate">{char.name}</p>
                             <button
                                 onClick={() => removeCharacter(char.id)}
